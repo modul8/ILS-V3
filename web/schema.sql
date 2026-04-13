@@ -1,0 +1,73 @@
+CREATE TABLE IF NOT EXISTS assets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  asset_type VARCHAR(40) NOT NULL,
+  asset_id VARCHAR(80) NOT NULL,
+  work_order VARCHAR(120) DEFAULT NULL,
+  purchase_order VARCHAR(120) DEFAULT NULL,
+  lat DECIMAL(10,6) DEFAULT NULL,
+  lon DECIMAL(10,6) DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_asset_type_id (asset_type, asset_id),
+  KEY idx_asset_type (asset_type),
+  KEY idx_asset_id (asset_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(80) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'user',
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_users_username (username),
+  KEY idx_users_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS asset_contacts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  asset_ref INT NOT NULL,
+  name VARCHAR(120) DEFAULT NULL,
+  phone VARCHAR(60) DEFAULT NULL,
+  email VARCHAR(160) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_asset_contacts_ref (asset_ref),
+  CONSTRAINT fk_asset_contacts_asset
+    FOREIGN KEY (asset_ref) REFERENCES assets(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE asset_contacts MODIFY name VARCHAR(120) NULL;
+ALTER TABLE asset_contacts MODIFY phone VARCHAR(60) NULL;
+
+CREATE TABLE IF NOT EXISTS asset_notes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  asset_ref INT NOT NULL,
+  user_ref INT NOT NULL,
+  note_text TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_asset_notes_ref (asset_ref),
+  CONSTRAINT fk_asset_notes_asset
+    FOREIGN KEY (asset_ref) REFERENCES assets(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_asset_notes_user
+    FOREIGN KEY (user_ref) REFERENCES users(id)
+    ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS asset_photos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  asset_ref INT NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  stored_path TEXT NOT NULL,
+  lat DECIMAL(10,6) DEFAULT NULL,
+  lon DECIMAL(10,6) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_asset_photos_ref (asset_ref),
+  CONSTRAINT fk_asset_photos_asset
+    FOREIGN KEY (asset_ref) REFERENCES assets(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
