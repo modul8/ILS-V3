@@ -181,6 +181,42 @@ function run_mapping_cmd(array $cfg, array $parts): array {
     ];
 }
 
+function mapping_dirs(array $cfg, bool $ensure = false): array {
+    $root = mapping_root($cfg);
+    $input_dir = path_join($root, "input_pdfs");
+    $outputs_dir = path_join($root, "outputs");
+    $images_dir = path_join($outputs_dir, "images");
+    $scripts_dir = path_join($root, "scripts");
+
+    if ($ensure) {
+        if (!is_dir($input_dir)) @mkdir($input_dir, 0775, true);
+        if (!is_dir($images_dir)) @mkdir($images_dir, 0775, true);
+    }
+    return [
+        "root" => $root,
+        "input_dir" => $input_dir,
+        "outputs_dir" => $outputs_dir,
+        "images_dir" => $images_dir,
+        "scripts_dir" => $scripts_dir,
+    ];
+}
+
+function mapping_candidate_files(string $map_stem, array $dirs): array {
+    $input_dir = $dirs["input_dir"];
+    $images_dir = $dirs["images_dir"];
+    $png = path_join($images_dir, $map_stem . "_page_001.png");
+    return [
+        "source_pdf" => path_join($input_dir, $map_stem . ".pdf"),
+        "control_csv" => path_join($input_dir, $map_stem . "_control_points.csv"),
+        "structure_csv" => path_join($input_dir, $map_stem . "_structure_truth.csv"),
+        "structure_georef_csv" => path_join($input_dir, $map_stem . "_structure_truth_georef.csv"),
+        "structure_geojson" => path_join($input_dir, $map_stem . "_structure_truth_georef.geojson"),
+        "image_png" => $png,
+        "image_world" => preg_replace('/\.png$/i', ".pgw", $png),
+        "image_prj" => preg_replace('/\.png$/i', ".prj", $png),
+    ];
+}
+
 $current_user = auth_current_user();
 if (!$current_user) {
     http_response_code(401);
@@ -592,8 +628,9 @@ if ($action === "mapping_list_pdfs" && $method === "GET") {
         echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
         exit;
     }
-    $root = mapping_root($cfg);
-    $input_dir = path_join($root, "input_pdfs");
+    $dirs = mapping_dirs($cfg, true);
+    $root = $dirs["root"];
+    $input_dir = $dirs["input_dir"];
     if (!is_dir($input_dir)) {
         http_response_code(404);
         echo json_encode(["ok" => false, "error" => "input_pdfs_missing"]);
@@ -605,6 +642,135 @@ if ($action === "mapping_list_pdfs" && $method === "GET") {
     }
     sort($pdfs);
     echo json_encode(["ok" => true, "pdfs" => $pdfs, "pipeline_root" => $root]);
+    exit;
+}
+
+if ($action === "mapping_upload_pdf" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    if (!isset($_FILES["pdf"]) || !isset($_FILES["pdf"]["tmp_name"]) || !is_uploaded_file($_FILES["pdf"]["tmp_name"])) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_upload"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $input_dir = $dirs["input_dir"];
+    if (!is_dir($input_dir)) {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "input_dir_unavailable"]);
+        exit;
+    }
+
+    $orig = basename((string)($_FILES["pdf"]["name"] ?? "map.pdf"));
+    $ext = strtolower((string)pathinfo($orig, PATHINFO_EXTENSION));
+    if ($ext !== "pdf") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "file_must_be_pdf"]);
+        exit;
+    }
+    $base = preg_replace("/[^A-Za-z0-9 _().-]+/", "_", (string)pathinfo($orig, PATHINFO_FILENAME));
+    $base = trim((string)$base);
+    if ($base === "") $base = "Map";
+    $filename = $base . ".pdf";
+    $dest = path_join($input_dir, $filename);
+    if (file_exists($dest)) {
+        $filename = $base . "_" . date("Ymd_His") . ".pdf";
+        $dest = path_join($input_dir, $filename);
+    }
+    if (!move_uploaded_file($_FILES["pdf"]["tmp_name"], $dest)) {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "save_failed"]);
+        exit;
+    }
+    @chmod($dest, 0664);
+    echo json_encode([
+        "ok" => true,
+        "pdf_name" => $filename,
+        "map_stem" => preg_replace('/\.pdf$/i', "", $filename),
+    ]);
+    exit;
+}
+
+if ($action === "mapping_list_outputs" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $map_stem = trim((string)($_GET["map_stem"] ?? ""));
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $candidates = mapping_candidate_files($map_stem, $dirs);
+    $files = [];
+    foreach ($candidates as $key => $path) {
+        if (!is_string($path) || $path === "") continue;
+        if (!file_exists($path)) continue;
+        $files[] = [
+            "key" => $key,
+            "name" => basename($path),
+            "size" => filesize($path),
+            "download_url" => "api/index.php?action=mapping_download_output&map_stem=" . rawurlencode($map_stem) . "&file_key=" . rawurlencode($key),
+        ];
+    }
+    echo json_encode(["ok" => true, "files" => $files]);
+    exit;
+}
+
+if ($action === "mapping_download_output" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $map_stem = trim((string)($_GET["map_stem"] ?? ""));
+    $file_key = trim((string)($_GET["file_key"] ?? ""));
+    if ($map_stem === "" || $file_key === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem_or_file_key"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $candidates = mapping_candidate_files($map_stem, $dirs);
+    $path = $candidates[$file_key] ?? "";
+    if (!is_string($path) || $path === "" || !file_exists($path)) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "file_not_found"]);
+        exit;
+    }
+    $ctype = "application/octet-stream";
+    $lower = strtolower($path);
+    if (str_ends_with($lower, ".pdf")) $ctype = "application/pdf";
+    if (str_ends_with($lower, ".png")) $ctype = "image/png";
+    if (str_ends_with($lower, ".csv")) $ctype = "text/csv";
+    if (str_ends_with($lower, ".geojson")) $ctype = "application/geo+json";
+    if (str_ends_with($lower, ".prj") || str_ends_with($lower, ".pgw")) $ctype = "text/plain";
+
+    header("Content-Type: " . $ctype);
+    header("Content-Length: " . (string)filesize($path));
+    header("Content-Disposition: attachment; filename=\"" . basename($path) . "\"");
+    readfile($path);
     exit;
 }
 
@@ -624,10 +790,11 @@ if ($action === "mapping_run" && $method === "POST") {
     $pdf_name = basename((string)($b["pdf_name"] ?? ""));
     $map_stem = trim((string)($b["map_stem"] ?? ""));
 
-    $root = mapping_root($cfg);
-    $scripts_dir = path_join($root, "scripts");
-    $input_dir = path_join($root, "input_pdfs");
-    $images_dir = path_join(path_join($root, "outputs"), "images");
+    $dirs = mapping_dirs($cfg, true);
+    $root = $dirs["root"];
+    $scripts_dir = $dirs["scripts_dir"];
+    $input_dir = $dirs["input_dir"];
+    $images_dir = $dirs["images_dir"];
     if (!is_dir($scripts_dir) || !is_dir($input_dir)) {
         http_response_code(404);
         echo json_encode(["ok" => false, "error" => "pipeline_paths_missing"]);

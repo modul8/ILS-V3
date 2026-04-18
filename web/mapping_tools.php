@@ -39,6 +39,10 @@ if (($current_user["role"] ?? "") !== "admin") {
       <div class="line">
         <button class="btn" id="mappingRefreshPdfsBtn" type="button">Refresh PDF List</button>
       </div>
+      <div class="line">
+        <input id="mappingUploadPdf" type="file" accept=".pdf,application/pdf">
+        <button class="btn btn-secondary" id="mappingUploadBtn" type="button">Upload PDF</button>
+      </div>
       <div class="grid">
         <label>Map PDF
           <select id="mappingPdf"></select>
@@ -55,6 +59,10 @@ if (($current_user["role"] ?? "") !== "admin") {
         <button class="btn" id="mappingGeorefBtn" type="button">3) Georeference Map</button>
         <button class="btn" id="mappingStructBtn" type="button">4) Build Structure GeoJSON</button>
       </div>
+      <div class="line">
+        <button class="btn btn-secondary" id="mappingOutputsBtn" type="button">Refresh Output Files</button>
+      </div>
+      <div id="mappingFiles" class="photo-list"></div>
       <div id="mappingMsg"></div>
       <pre id="mappingOutput" class="log-box"></pre>
     </section>

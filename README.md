@@ -25,6 +25,9 @@ Asset types supported:
 - CSV import of work lists into a dedicated `jobs` table
 - Job-to-asset linking during import (asset coordinates flow into jobs)
 - Admin mapping tools page to run server-side map pipeline scripts
+  - Upload map PDFs from browser
+  - Store source + generated files in pipeline folders
+  - Download generated outputs (PNG/world/prj/CSV/GeoJSON/PDF)
 
 ## Role Permissions
 
