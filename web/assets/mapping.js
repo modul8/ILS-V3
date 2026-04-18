@@ -19,12 +19,14 @@
   const zoomInput = document.getElementById("mappingZoom");
   const zoomLabel = document.getElementById("mappingZoomLabel");
   const clickImage = document.getElementById("mappingClickImage");
+  const clickWrap = document.getElementById("mappingClickWrap");
   const pointLayer = document.getElementById("mappingPointLayer");
   const pointList = document.getElementById("mappingPointList");
 
   const loadStructToolBtn = document.getElementById("mappingLoadStructToolBtn");
   const structMeta = document.getElementById("mappingStructMeta");
   const structImage = document.getElementById("mappingStructImage");
+  const structWrap = document.getElementById("mappingStructWrap");
   const structLayer = document.getElementById("mappingStructLayer");
   const structList = document.getElementById("mappingStructList");
   const structUpsertAsset = document.getElementById("mappingStructUpsertAsset");
@@ -66,6 +68,24 @@
     return pdfName.replace(/\.pdf$/i, "");
   }
 
+  function centerMapInWrap(wrapEl, imageEl) {
+    if (!wrapEl || !imageEl) return;
+    const imgW = imageEl.clientWidth || 0;
+    const imgH = imageEl.clientHeight || 0;
+    const viewW = wrapEl.clientWidth || 0;
+    const viewH = wrapEl.clientHeight || 0;
+    if (!imgW || !imgH || !viewW || !viewH) return;
+    const targetLeft = Math.max(0, (imgW - viewW) / 2);
+    const targetTop = Math.max(0, (imgH - viewH) / 2);
+    wrapEl.scrollLeft = targetLeft;
+    wrapEl.scrollTop = targetTop;
+  }
+
+  function recenterBothMaps() {
+    centerMapInWrap(clickWrap, clickImage);
+    centerMapInWrap(structWrap, structImage);
+  }
+
   function applyZoom() {
     if (!clickImage) return;
     const zoom = Number(zoomInput && zoomInput.value ? zoomInput.value : 100);
@@ -78,6 +98,7 @@
     }
     renderControlPoints();
     renderStructurePoints();
+    window.requestAnimationFrame(recenterBothMaps);
   }
 
   function renderDots(layer, image, rows, typeKey, idKey) {
@@ -181,6 +202,7 @@
         clickImage.style.display = "block";
         applyZoom();
         renderControlPoints();
+        window.requestAnimationFrame(() => centerMapInWrap(clickWrap, clickImage));
         if (clickMeta) {
           clickMeta.textContent = `Image size: ${r.image_width} x ${r.image_height} | Control points: ${controlPoints.length}`;
         }
@@ -203,6 +225,7 @@
         structImage.style.display = "block";
         applyZoom();
         renderStructurePoints();
+        window.requestAnimationFrame(() => centerMapInWrap(structWrap, structImage));
         if (structMeta) {
           const world = r.world_file_found ? "yes" : "no";
           structMeta.textContent = `Image size: ${r.image_width} x ${r.image_height} | Georef world file: ${world} | Structure points: ${structurePoints.length}`;
