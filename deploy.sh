@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ILS V3 deploy helper (template)
+# ILS V3 deploy helper
 # Usage:
 #   ./deploy.sh
 # Optional env vars:
 #   SRC_WEB_DIR, DEST_DIR, BACKUP_DIR, APP_OWNER, DB_MIGRATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS, SCHEMA_FILE
 
-SRC_WEB_DIR="${SRC_WEB_DIR:-$(cd "$(dirname "$0")" && pwd)/web/}"
-DEST_DIR="${DEST_DIR:-/mnt/evo-pool/apps/ils_v3/}"
-BACKUP_DIR="${BACKUP_DIR:-/mnt/evo-pool/apps/ils_v3_backups}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+
+SRC_WEB_DIR="${SRC_WEB_DIR:-$SCRIPT_DIR/web/}"
+DEST_DIR="${DEST_DIR:-$BASE_DIR/app/}"
+BACKUP_DIR="${BACKUP_DIR:-$BASE_DIR/backups/}"
 APP_OWNER="${APP_OWNER:-}"
 
 DB_MIGRATE="${DB_MIGRATE:-0}"
@@ -18,7 +21,7 @@ DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:-}"
 DB_USER="${DB_USER:-}"
 DB_PASS="${DB_PASS:-}"
-SCHEMA_FILE="${SCHEMA_FILE:-$(cd "$(dirname "$0")" && pwd)/web/schema.sql}"
+SCHEMA_FILE="${SCHEMA_FILE:-$SCRIPT_DIR/web/schema.sql}"
 
 timestamp="$(date +%F_%H%M%S)"
 

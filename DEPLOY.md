@@ -2,7 +2,7 @@
 
 This is a practical deployment checklist for ILS V3 on your TrueNAS-hosted web stack.
 
-Quick option: run [`deploy.sh`](./deploy.sh) from repo root and override env vars as needed.
+Quick option: run [`deploy.sh`](./deploy.sh) from `repo/`. By default it deploys to sibling `app/` and writes backups to sibling `backups/`.
 
 ## 1) Preflight
 
@@ -48,8 +48,14 @@ Script equivalent:
 
 ```bash
 chmod +x deploy.sh
-DEST_DIR=/mnt/evo-pool/apps/ils_v3/ ./deploy.sh
+./deploy.sh
 ```
+
+Default path behavior:
+
+- If script is at `/mnt/apps/ils_v3/repo/deploy.sh`
+- Deploy target is `/mnt/apps/ils_v3/app/`
+- Backup target is `/mnt/apps/ils_v3/backups/`
 
 ## 4) Ensure Required Files
 
