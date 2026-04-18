@@ -1,12 +1,13 @@
 # ILS V3 Asset App
 
-ILS V3 is a PHP + MariaDB web app for searching and managing field assets.
+ILS V3 is a PHP + MariaDB web app for managing field assets and work jobs.
 
 Asset types supported:
 
 - Drains
 - Culverts
 - Bridges
+- Jobs (linked to assets)
 
 ## Features
 
@@ -21,6 +22,9 @@ Asset types supported:
 - Contact records per asset
 - Photo uploads per asset
 - Secure login with role-based access (`admin`, `user`)
+- CSV import of work lists into a dedicated `jobs` table
+- Job-to-asset linking during import (asset coordinates flow into jobs)
+- Admin mapping tools page to run server-side map pipeline scripts
 
 ## Role Permissions
 
@@ -51,6 +55,8 @@ Asset types supported:
 - `web/culverts.php` - culverts page
 - `web/bridges.php` - bridges page
 - `web/api/index.php` - backend API
+- `web/jobs.php` - jobs list + CSV import
+- `web/mapping_tools.php` - mapping script runner (admin only)
 - `web/schema.sql` - DB schema and migration alters
 - `web/config.sample.php` - configuration template
 
@@ -58,11 +64,12 @@ Asset types supported:
 
 1. Copy `web/config.sample.php` to `web/config.php`.
 2. Edit DB credentials in `web/config.php`.
-3. Run `web/schema.sql` against your MariaDB/MySQL database.
-4. Deploy the contents of `web/` to your web root on TrueNAS.
-5. Ensure `web/uploads/` is writable by the web server user.
-6. Open `/setup_admin.php` once and create the first admin account.
-7. Sign in at `/login.php`.
+3. Optional for mapping tools: set `mapping_enabled`, `mapping_pipeline_root`, `mapping_python_bin`.
+4. Run `web/schema.sql` against your MariaDB/MySQL database.
+5. Deploy the contents of `web/` to your web root on TrueNAS.
+6. Ensure `web/uploads/` is writable by the web server user.
+7. Open `/setup_admin.php` once and create the first admin account.
+8. Sign in at `/login.php`.
 
 ### Optional: Use Deploy Script
 
@@ -104,6 +111,8 @@ These make contact fields fully optional.
 - `/culverts.php`
 - `/bridges.php`
 - `/admin_users.php` (admin only)
+- `/jobs.php`
+- `/mapping_tools.php` (admin only)
 
 ## Security Notes
 
@@ -111,6 +120,7 @@ These make contact fields fully optional.
 - Passwords are stored with PHP `password_hash`.
 - API endpoints require a valid logged-in session.
 - Keep `web/config.php` out of source control.
+- Mapping tools require PHP `exec` to be enabled and Python available on server.
 
 ## Requirements
 

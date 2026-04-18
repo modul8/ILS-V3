@@ -55,6 +55,10 @@ DEST_DIR=/mnt/evo-pool/apps/ils_v3/ ./deploy.sh
 
 - `config.php` exists on server (copied from `config.sample.php` and edited)
 - `uploads/` exists and is writable
+- If using mapping tools, configure:
+  - `mapping_enabled` => `true`
+  - `mapping_pipeline_root` => absolute path to `drain-map-pipeline`
+  - `mapping_python_bin` => python executable path (example `/usr/bin/python3`)
 
 Example:
 
@@ -94,12 +98,15 @@ If no users exist:
 
 - `/login.php` loads and login works
 - `drains/culverts/bridges` pages load
+- `jobs.php` loads and lists rows
 - Search existing asset by ID (e.g. `478`)
+- Import a test jobs CSV and verify matched/unmatched counts
 - Create new asset as `user`
 - Add note and upload photo as `user`
 - Confirm `user` cannot edit WO/PO/GPS/contacts on existing asset
 - Confirm `admin` can edit WO/PO/GPS/contacts
 - Click map link and verify pin opens in Google Maps
+- If mapping tools enabled: `mapping_tools.php` lists PDFs and runs convert/georef actions
 
 ## 8) Rollback
 

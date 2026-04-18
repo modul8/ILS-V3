@@ -90,6 +90,97 @@ function asset_with_relations(PDO $pdo, array $cfg, string $asset_type, string $
     ];
 }
 
+function clean_job_status(string $v): string {
+    $v = strtolower(trim($v));
+    $allowed = ["pending", "scheduled", "in_progress", "completed", "cancelled"];
+    return in_array($v, $allowed, true) ? $v : "pending";
+}
+
+function clean_job_module(string $v): string {
+    $v = strtolower(trim($v));
+    return $v === "" ? "work" : preg_replace("/[^a-z0-9_-]/", "_", $v);
+}
+
+function parse_csv_upload(string $tmp_path): array {
+    $rows = [];
+    $fh = fopen($tmp_path, "rb");
+    if (!$fh) return $rows;
+    $header = fgetcsv($fh);
+    if (!is_array($header)) {
+        fclose($fh);
+        return $rows;
+    }
+    $header = array_map(function ($h) {
+        return strtolower(trim((string)$h));
+    }, $header);
+    while (($line = fgetcsv($fh)) !== false) {
+        if (!is_array($line)) continue;
+        $row = [];
+        foreach ($header as $i => $key) {
+            $row[$key] = isset($line[$i]) ? trim((string)$line[$i]) : "";
+        }
+        $rows[] = $row;
+    }
+    fclose($fh);
+    return $rows;
+}
+
+function normalized_job_key(array $row): string {
+    $parts = [
+        strtolower(trim((string)($row["module"] ?? "work"))),
+        strtolower(trim((string)($row["asset_type"] ?? ""))),
+        trim((string)($row["asset_id"] ?? "")),
+        trim((string)($row["work_order"] ?? "")),
+        trim((string)($row["purchase_order"] ?? "")),
+        trim((string)($row["description"] ?? "")),
+    ];
+    $raw = implode("|", $parts);
+    if (trim($raw, "| ") === "") {
+        return "job_" . date("YmdHis") . "_" . str_pad((string)mt_rand(0, 99999999), 8, "0", STR_PAD_LEFT);
+    }
+    return "job_" . substr(sha1($raw), 0, 20);
+}
+
+function mapping_enabled(array $cfg): bool {
+    return (bool)($cfg["mapping_enabled"] ?? false);
+}
+
+function mapping_root(array $cfg): string {
+    $p = trim((string)($cfg["mapping_pipeline_root"] ?? ""));
+    return $p;
+}
+
+function path_join(string $a, string $b): string {
+    return rtrim($a, "/\\") . DIRECTORY_SEPARATOR . ltrim($b, "/\\");
+}
+
+function path_within(string $path, string $base): bool {
+    $real_path = realpath($path);
+    $real_base = realpath($base);
+    if ($real_path === false || $real_base === false) return false;
+    if (DIRECTORY_SEPARATOR === "\\") {
+        $real_path = strtolower($real_path);
+        $real_base = strtolower($real_base);
+    }
+    return strpos($real_path, $real_base) === 0;
+}
+
+function run_mapping_cmd(array $cfg, array $parts): array {
+    $python = trim((string)($cfg["mapping_python_bin"] ?? "python3"));
+    $cmd_parts = array_merge([$python], $parts);
+    $escaped = array_map("escapeshellarg", $cmd_parts);
+    $cmd = implode(" ", $escaped) . " 2>&1";
+    $output = [];
+    $code = 0;
+    exec($cmd, $output, $code);
+    return [
+        "ok" => $code === 0,
+        "exit_code" => $code,
+        "command" => $cmd,
+        "output" => implode("\n", $output),
+    ];
+}
+
 $current_user = auth_current_user();
 if (!$current_user) {
     http_response_code(401);
@@ -335,6 +426,286 @@ if ($action === "upload_photo" && $method === "POST") {
         ":lon" => $lon === "" ? null : $lon,
     ]);
     echo json_encode(["ok" => true]);
+    exit;
+}
+
+if ($action === "list_jobs" && $method === "GET") {
+    $module = clean_job_module((string)($_GET["module"] ?? ""));
+    $status = trim((string)($_GET["status"] ?? ""));
+    $asset_type = clean_asset_type((string)($_GET["asset_type"] ?? ""));
+    $q = trim((string)($_GET["q"] ?? ""));
+    $limit = (int)($_GET["limit"] ?? 300);
+    if ($limit <= 0 || $limit > 2000) $limit = 300;
+
+    $where = [];
+    $params = [];
+    if ($module !== "" && $module !== "all") {
+        $where[] = "j.module = :module";
+        $params[":module"] = $module;
+    }
+    if ($status !== "") {
+        $where[] = "j.status = :status";
+        $params[":status"] = clean_job_status($status);
+    }
+    if ($asset_type !== "") {
+        $where[] = "j.asset_type = :asset_type";
+        $params[":asset_type"] = $asset_type;
+    }
+    if ($q !== "") {
+        $where[] = "(j.work_order LIKE :q OR j.purchase_order LIKE :q OR j.asset_id LIKE :q OR j.description LIKE :q)";
+        $params[":q"] = "%" . $q . "%";
+    }
+
+    $sql = "SELECT
+              j.id, j.job_key, j.module, j.asset_type, j.asset_id, j.asset_ref,
+              j.work_order, j.purchase_order, j.status, j.scheduled_date, j.description,
+              j.lat, j.lon, j.updated_at,
+              a.asset_id AS matched_asset_id, a.updated_at AS asset_updated_at
+            FROM jobs j
+            LEFT JOIN assets a ON a.id = j.asset_ref";
+    if ($where) $sql .= " WHERE " . implode(" AND ", $where);
+    $sql .= " ORDER BY j.updated_at DESC LIMIT " . $limit;
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    echo json_encode(["ok" => true, "jobs" => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    exit;
+}
+
+if ($action === "import_jobs_csv" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!isset($_FILES["file"]) || !isset($_FILES["file"]["tmp_name"]) || !is_uploaded_file($_FILES["file"]["tmp_name"])) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_upload"]);
+        exit;
+    }
+    $rows = parse_csv_upload((string)$_FILES["file"]["tmp_name"]);
+    if (!$rows) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "empty_csv"]);
+        exit;
+    }
+
+    $sql = "INSERT INTO jobs
+            (job_key, module, asset_type, asset_id, asset_ref, work_order, purchase_order, status, scheduled_date, description, lat, lon, meta)
+            VALUES
+            (:job_key, :module, :asset_type, :asset_id, :asset_ref, :work_order, :purchase_order, :status, :scheduled_date, :description, :lat, :lon, :meta)
+            ON DUPLICATE KEY UPDATE
+              module = VALUES(module),
+              asset_type = VALUES(asset_type),
+              asset_id = VALUES(asset_id),
+              asset_ref = VALUES(asset_ref),
+              work_order = VALUES(work_order),
+              purchase_order = VALUES(purchase_order),
+              status = VALUES(status),
+              scheduled_date = VALUES(scheduled_date),
+              description = VALUES(description),
+              lat = VALUES(lat),
+              lon = VALUES(lon),
+              meta = VALUES(meta)";
+    $stmt = $pdo->prepare($sql);
+
+    $inserted = 0;
+    $matched = 0;
+    $unmatched = 0;
+    foreach ($rows as $r) {
+        $asset_type = clean_asset_type((string)($r["asset_type"] ?? ""));
+        $asset_id = trim((string)($r["asset_id"] ?? ""));
+        $module = clean_job_module((string)($r["module"] ?? "work"));
+        $work_order = trim((string)($r["work_order"] ?? ""));
+        $purchase_order = trim((string)($r["purchase_order"] ?? ""));
+        $status = clean_job_status((string)($r["status"] ?? "pending"));
+        $scheduled_date = trim((string)($r["scheduled_date"] ?? ""));
+        $description = trim((string)($r["description"] ?? ""));
+        $job_key = trim((string)($r["job_key"] ?? ""));
+        if ($job_key === "") {
+            $job_key = normalized_job_key([
+                "module" => $module,
+                "asset_type" => $asset_type,
+                "asset_id" => $asset_id,
+                "work_order" => $work_order,
+                "purchase_order" => $purchase_order,
+                "description" => $description,
+            ]);
+        }
+
+        $asset_ref = null;
+        $lat = null;
+        $lon = null;
+        $meta = ["import_source" => "csv"];
+        if ($asset_type !== "" && $asset_id !== "") {
+            $asset = get_asset_row($pdo, $asset_type, $asset_id);
+            if ($asset) {
+                $asset_ref = (int)$asset["id"];
+                $lat = $asset["lat"] !== null ? $asset["lat"] : null;
+                $lon = $asset["lon"] !== null ? $asset["lon"] : null;
+                $matched++;
+            } else {
+                $unmatched++;
+                $meta["unmatched_asset"] = true;
+            }
+        } else {
+            $unmatched++;
+            $meta["unmatched_asset"] = true;
+        }
+        if ($scheduled_date === "") $scheduled_date = null;
+
+        $stmt->execute([
+            ":job_key" => $job_key,
+            ":module" => $module,
+            ":asset_type" => $asset_type === "" ? null : $asset_type,
+            ":asset_id" => $asset_id === "" ? null : $asset_id,
+            ":asset_ref" => $asset_ref,
+            ":work_order" => $work_order === "" ? null : $work_order,
+            ":purchase_order" => $purchase_order === "" ? null : $purchase_order,
+            ":status" => $status,
+            ":scheduled_date" => $scheduled_date,
+            ":description" => $description === "" ? null : $description,
+            ":lat" => $lat,
+            ":lon" => $lon,
+            ":meta" => json_encode($meta, JSON_UNESCAPED_SLASHES),
+        ]);
+        $inserted++;
+    }
+
+    echo json_encode([
+        "ok" => true,
+        "rows" => $inserted,
+        "matched_assets" => $matched,
+        "unmatched_assets" => $unmatched,
+    ]);
+    exit;
+}
+
+if ($action === "mapping_list_pdfs" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $root = mapping_root($cfg);
+    $input_dir = path_join($root, "input_pdfs");
+    if (!is_dir($input_dir)) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "input_pdfs_missing"]);
+        exit;
+    }
+    $pdfs = [];
+    foreach (glob($input_dir . DIRECTORY_SEPARATOR . "*.pdf") ?: [] as $p) {
+        $pdfs[] = basename($p);
+    }
+    sort($pdfs);
+    echo json_encode(["ok" => true, "pdfs" => $pdfs, "pipeline_root" => $root]);
+    exit;
+}
+
+if ($action === "mapping_run" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $b = body_json();
+    $operation = trim((string)($b["operation"] ?? ""));
+    $pdf_name = basename((string)($b["pdf_name"] ?? ""));
+    $map_stem = trim((string)($b["map_stem"] ?? ""));
+
+    $root = mapping_root($cfg);
+    $scripts_dir = path_join($root, "scripts");
+    $input_dir = path_join($root, "input_pdfs");
+    $images_dir = path_join(path_join($root, "outputs"), "images");
+    if (!is_dir($scripts_dir) || !is_dir($input_dir)) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "pipeline_paths_missing"]);
+        exit;
+    }
+
+    $cmd_parts = [];
+    if ($operation === "init_inputs") {
+        if ($pdf_name === "") {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_pdf_name"]);
+            exit;
+        }
+        $pdf_path = path_join($input_dir, $pdf_name);
+        if (!file_exists($pdf_path) || !path_within($pdf_path, $input_dir)) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "invalid_pdf"]);
+            exit;
+        }
+        $cmd_parts = [path_join($scripts_dir, "init_map_inputs.py"), "--pdf", $pdf_path];
+    } elseif ($operation === "convert_pdf") {
+        if ($pdf_name === "") {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_pdf_name"]);
+            exit;
+        }
+        $pdf_path = path_join($input_dir, $pdf_name);
+        if (!file_exists($pdf_path) || !path_within($pdf_path, $input_dir)) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "invalid_pdf"]);
+            exit;
+        }
+        $cmd_parts = [path_join($scripts_dir, "pdf_to_images.py"), $pdf_path, "--output-dir", $images_dir, "--dpi", "300"];
+    } elseif ($operation === "georef_map") {
+        if ($map_stem === "") {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+            exit;
+        }
+        $image = path_join($images_dir, $map_stem . "_page_001.png");
+        $control_csv = path_join($input_dir, $map_stem . "_control_points.csv");
+        if (!file_exists($image) || !file_exists($control_csv)) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_image_or_control_csv"]);
+            exit;
+        }
+        $cmd_parts = [path_join($scripts_dir, "georef_map.py"), $image, $control_csv, "--target-crs", "EPSG:4326"];
+    } elseif ($operation === "build_structure_geojson") {
+        if ($map_stem === "") {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+            exit;
+        }
+        $image = path_join($images_dir, $map_stem . "_page_001.png");
+        $control_csv = path_join($input_dir, $map_stem . "_control_points.csv");
+        $structures_csv = path_join($input_dir, $map_stem . "_structure_truth.csv");
+        if (!file_exists($image) || !file_exists($control_csv) || !file_exists($structures_csv)) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_required_files"]);
+            exit;
+        }
+        $cmd_parts = [
+            path_join($scripts_dir, "georef_map.py"),
+            $image,
+            $control_csv,
+            "--target-crs",
+            "EPSG:4326",
+            "--structures-csv",
+            $structures_csv,
+        ];
+    } else {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_operation"]);
+        exit;
+    }
+
+    $run = run_mapping_cmd($cfg, $cmd_parts);
+    echo json_encode($run);
     exit;
 }
 

@@ -203,6 +203,20 @@ textarea { min-height: 84px; resize: vertical; }
 .error { color: #b42318; }
 .success { color: #027a48; }
 
+.log-box {
+  margin-top: 10px;
+  background: #0b1220;
+  color: #d7e6ff;
+  border-radius: 10px;
+  border: 1px solid #24324a;
+  padding: 10px;
+  min-height: 180px;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+
 .login-body {
   display: flex;
   min-height: 100vh;

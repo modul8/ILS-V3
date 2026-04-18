@@ -35,6 +35,16 @@ require __DIR__ . "/_bootstrap.php";
         <h2>Bridges</h2>
         <p>Search and manage bridge assets.</p>
       </a>
+      <a class="tile" href="jobs.php">
+        <h2>Jobs</h2>
+        <p>Import work lists and link jobs to asset coordinates.</p>
+      </a>
+      <?php if (($current_user["role"] ?? "") === "admin"): ?>
+      <a class="tile" href="mapping_tools.php">
+        <h2>Mapping Tools</h2>
+        <p>Run map conversion/georeference scripts from the web app.</p>
+      </a>
+      <?php endif; ?>
     </div>
   </main>
 </body>

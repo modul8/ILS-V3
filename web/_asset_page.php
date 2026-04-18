@@ -31,6 +31,10 @@ $title = $title_map[$asset_type];
       <a href="drains.php"<?php echo $asset_type === "drain" ? " class=\"active\"" : ""; ?>>Drains</a>
       <a href="culverts.php"<?php echo $asset_type === "culvert" ? " class=\"active\"" : ""; ?>>Culverts</a>
       <a href="bridges.php"<?php echo $asset_type === "bridge" ? " class=\"active\"" : ""; ?>>Bridges</a>
+      <a href="jobs.php">Jobs</a>
+      <?php if (($current_user["role"] ?? "") === "admin"): ?>
+      <a href="mapping_tools.php">Mapping Tools</a>
+      <?php endif; ?>
       <a href="index.php">Home</a>
     </nav>
     <div class="topbar-right">

@@ -6,6 +6,7 @@
 - MariaDB `10.5+` or MySQL `8.0+`
 - Web server: Nginx or Apache with PHP-FPM/mod_php
 - Writable uploads directory: `web/uploads/`
+- For mapping tools: Python `3.10+` available in PATH or configured explicitly
 
 ## PHP Extensions
 
@@ -17,6 +18,10 @@ Required:
 - `session`
 - `fileinfo`
 - `mbstring`
+
+If mapping tools are enabled:
+
+- PHP must allow `exec` (not blocked by `disable_functions`)
 
 Recommended:
 
@@ -41,6 +46,9 @@ Recommended:
 - `web/config.php` must exist (copy from `web/config.sample.php`)
 - `web/config.php` should be readable by PHP and not committed to Git
 - `web/uploads/` must be writable by web server user (for photo uploads)
+- If mapping tools are enabled:
+  - `mapping_pipeline_root` must exist and be readable/writable by web process
+  - pipeline folders `input_pdfs/`, `outputs/images/`, `scripts/` must exist
 
 ## Browser Requirements
 

@@ -71,3 +71,30 @@ CREATE TABLE IF NOT EXISTS asset_photos (
     FOREIGN KEY (asset_ref) REFERENCES assets(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  job_key VARCHAR(160) NOT NULL,
+  module VARCHAR(60) NOT NULL DEFAULT 'work',
+  asset_type VARCHAR(40) DEFAULT NULL,
+  asset_id VARCHAR(80) DEFAULT NULL,
+  asset_ref INT DEFAULT NULL,
+  work_order VARCHAR(120) DEFAULT NULL,
+  purchase_order VARCHAR(120) DEFAULT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'pending',
+  scheduled_date DATE DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  lat DECIMAL(10,6) DEFAULT NULL,
+  lon DECIMAL(10,6) DEFAULT NULL,
+  meta TEXT DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_jobs_job_key (job_key),
+  KEY idx_jobs_module (module),
+  KEY idx_jobs_asset_ref (asset_ref),
+  KEY idx_jobs_asset_type_id (asset_type, asset_id),
+  KEY idx_jobs_status (status),
+  CONSTRAINT fk_jobs_asset
+    FOREIGN KEY (asset_ref) REFERENCES assets(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
