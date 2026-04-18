@@ -814,7 +814,7 @@ if ($action === "mapping_run" && $method === "POST") {
             echo json_encode(["ok" => false, "error" => "invalid_pdf"]);
             exit;
         }
-        $cmd_parts = [path_join($scripts_dir, "init_map_inputs.py"), "--pdf", $pdf_path];
+        $cmd_parts = [path_join($scripts_dir, "init_map_inputs.py"), $pdf_path];
     } elseif ($operation === "convert_pdf") {
         if ($pdf_name === "") {
             http_response_code(400);
