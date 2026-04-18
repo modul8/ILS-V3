@@ -8,5 +8,5 @@ return [
     "photo_base_url" => "",
     "mapping_enabled" => false,
     "mapping_pipeline_root" => "/mnt/evo-pool/apps/drain-map-pipeline",
-    "mapping_python_bin" => "python3",
+    "mapping_python_bin" => "/opt/ils-v3-py/bin/python",
 ];
