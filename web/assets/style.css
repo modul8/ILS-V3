@@ -217,6 +217,55 @@ textarea { min-height: 84px; resize: vertical; }
   font-size: 12px;
 }
 
+.map-click-wrap {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #eef2f8;
+  overflow: auto;
+  max-height: 620px;
+}
+
+.map-image-stage {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+#mappingClickImage {
+  display: none;
+  max-width: none;
+  cursor: crosshair;
+}
+
+.map-point-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.map-point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #d92d20;
+  border: 2px solid #fff;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
+}
+
+.map-point-label {
+  position: absolute;
+  transform: translate(8px, -50%);
+  font-size: 11px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
 .login-body {
   display: flex;
   min-height: 100vh;

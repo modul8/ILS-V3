@@ -63,6 +63,42 @@ if (($current_user["role"] ?? "") !== "admin") {
         <button class="btn btn-secondary" id="mappingOutputsBtn" type="button">Refresh Output Files</button>
       </div>
       <div id="mappingFiles" class="photo-list"></div>
+      <hr>
+      <h2>5) Web Click Control Points</h2>
+      <p class="meta">Click directly on the map image in browser to append control points.</p>
+      <div class="line">
+        <button class="btn" id="mappingLoadClickToolBtn" type="button">Load Map For Clicking</button>
+        <label class="meta">Zoom
+          <input id="mappingZoom" type="range" min="25" max="300" value="100" step="5">
+          <span id="mappingZoomLabel">100%</span>
+        </label>
+      </div>
+      <div id="mappingClickMeta" class="meta"></div>
+      <div id="mappingClickWrap" class="map-click-wrap">
+        <div id="mappingImageStage" class="map-image-stage">
+          <img id="mappingClickImage" alt="Map PNG for control point clicking">
+          <div id="mappingPointLayer" class="map-point-layer"></div>
+        </div>
+      </div>
+      <div id="mappingPointList" class="list-table-wrap"></div>
+      <hr>
+      <h2>6) Web Click Asset Points (From Georeferenced Map)</h2>
+      <p class="meta">Requires georeference first (`.pgw` present). Click map to add assets with auto-derived lon/lat.</p>
+      <div class="line">
+        <button class="btn" id="mappingLoadStructToolBtn" type="button">Load Georef Click Tool</button>
+        <label class="meta">
+          <input id="mappingStructUpsertAsset" type="checkbox" checked>
+          Also create/update in Assets list
+        </label>
+      </div>
+      <div id="mappingStructMeta" class="meta"></div>
+      <div id="mappingStructWrap" class="map-click-wrap">
+        <div id="mappingStructStage" class="map-image-stage">
+          <img id="mappingStructImage" alt="Map PNG for structure clicking">
+          <div id="mappingStructLayer" class="map-point-layer"></div>
+        </div>
+      </div>
+      <div id="mappingStructList" class="list-table-wrap"></div>
       <div id="mappingMsg"></div>
       <pre id="mappingOutput" class="log-box"></pre>
     </section>

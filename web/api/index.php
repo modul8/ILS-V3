@@ -228,6 +228,151 @@ function mapping_candidate_files(string $map_stem, array $dirs): array {
     ];
 }
 
+function mapping_control_fields(): array {
+    return ["pixel_x", "pixel_y", "lon", "lat", "asset_type", "asset_id", "label"];
+}
+
+function ensure_control_csv_header(string $csv_path): void {
+    if (file_exists($csv_path) && filesize($csv_path) > 0) return;
+    $fh = fopen($csv_path, "wb");
+    if (!$fh) {
+        throw new RuntimeException("control_csv_open_failed");
+    }
+    fputcsv($fh, mapping_control_fields());
+    fclose($fh);
+}
+
+function mapping_read_control_points(string $csv_path): array {
+    $rows = [];
+    if (!file_exists($csv_path) || filesize($csv_path) === 0) return $rows;
+    $fh = fopen($csv_path, "rb");
+    if (!$fh) return $rows;
+    $header = fgetcsv($fh);
+    if (!is_array($header)) {
+        fclose($fh);
+        return $rows;
+    }
+    $idx = array_flip(array_map(function ($h) { return strtolower(trim((string)$h)); }, $header));
+    while (($line = fgetcsv($fh)) !== false) {
+        if (!is_array($line)) continue;
+        $row = [];
+        foreach (mapping_control_fields() as $f) {
+            $k = strtolower($f);
+            $i = $idx[$k] ?? null;
+            $row[$f] = ($i !== null && isset($line[$i])) ? trim((string)$line[$i]) : "";
+        }
+        $rows[] = $row;
+    }
+    fclose($fh);
+    return $rows;
+}
+
+function mapping_append_control_point(string $csv_path, array $row): void {
+    ensure_control_csv_header($csv_path);
+    $fh = fopen($csv_path, "ab");
+    if (!$fh) {
+        throw new RuntimeException("control_csv_open_failed");
+    }
+    $ordered = [];
+    foreach (mapping_control_fields() as $f) {
+        $ordered[] = (string)($row[$f] ?? "");
+    }
+    fputcsv($fh, $ordered);
+    fclose($fh);
+}
+
+function mapping_structure_fields(): array {
+    return ["structure_id", "structure_type", "pixel_x", "pixel_y", "lon", "lat"];
+}
+
+function ensure_structure_csv_header(string $csv_path): void {
+    if (file_exists($csv_path) && filesize($csv_path) > 0) return;
+    $fh = fopen($csv_path, "wb");
+    if (!$fh) {
+        throw new RuntimeException("structure_csv_open_failed");
+    }
+    fputcsv($fh, mapping_structure_fields());
+    fclose($fh);
+}
+
+function mapping_read_structure_points(string $csv_path): array {
+    $rows = [];
+    if (!file_exists($csv_path) || filesize($csv_path) === 0) return $rows;
+    $fh = fopen($csv_path, "rb");
+    if (!$fh) return $rows;
+    $header = fgetcsv($fh);
+    if (!is_array($header)) {
+        fclose($fh);
+        return $rows;
+    }
+    $idx = array_flip(array_map(function ($h) { return strtolower(trim((string)$h)); }, $header));
+    while (($line = fgetcsv($fh)) !== false) {
+        if (!is_array($line)) continue;
+        $row = [];
+        foreach (mapping_structure_fields() as $f) {
+            $k = strtolower($f);
+            $i = $idx[$k] ?? null;
+            $row[$f] = ($i !== null && isset($line[$i])) ? trim((string)$line[$i]) : "";
+        }
+        $rows[] = $row;
+    }
+    fclose($fh);
+    return $rows;
+}
+
+function mapping_append_structure_point(string $csv_path, array $row): void {
+    ensure_structure_csv_header($csv_path);
+    $fh = fopen($csv_path, "ab");
+    if (!$fh) {
+        throw new RuntimeException("structure_csv_open_failed");
+    }
+    $ordered = [];
+    foreach (mapping_structure_fields() as $f) {
+        $ordered[] = (string)($row[$f] ?? "");
+    }
+    fputcsv($fh, $ordered);
+    fclose($fh);
+}
+
+function mapping_world_file_path(string $image_path): string {
+    $lower = strtolower($image_path);
+    if (str_ends_with($lower, ".png")) {
+        return preg_replace('/\.png$/i', ".pgw", $image_path);
+    }
+    if (str_ends_with($lower, ".jpg") || str_ends_with($lower, ".jpeg")) {
+        return preg_replace('/\.(jpg|jpeg)$/i', ".jgw", $image_path);
+    }
+    return preg_replace('/\.[^.]+$/', ".wld", $image_path);
+}
+
+function mapping_load_world_affine(string $image_path): ?array {
+    $world = mapping_world_file_path($image_path);
+    if (!file_exists($world)) return null;
+    $lines = file($world, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!is_array($lines) || count($lines) < 6) return null;
+    $vals = [];
+    for ($i = 0; $i < 6; $i++) {
+        $v = trim((string)$lines[$i]);
+        if (!is_numeric($v)) return null;
+        $vals[] = (float)$v;
+    }
+    // world file order: a,d,b,e,c,f
+    return [
+        "a" => $vals[0],
+        "d" => $vals[1],
+        "b" => $vals[2],
+        "e" => $vals[3],
+        "c" => $vals[4],
+        "f" => $vals[5],
+    ];
+}
+
+function mapping_pixel_to_map(array $affine, float $pixel_x, float $pixel_y): array {
+    $map_x = $affine["a"] * $pixel_x + $affine["b"] * $pixel_y + $affine["c"];
+    $map_y = $affine["d"] * $pixel_x + $affine["e"] * $pixel_y + $affine["f"];
+    return ["lon" => $map_x, "lat" => $map_y];
+}
+
 $action = $_GET["action"] ?? "";
 $method = $_SERVER["REQUEST_METHOD"] ?? "GET";
 $mapping_key_ok = mapping_api_key_valid($cfg);
@@ -843,6 +988,349 @@ if ($action === "mapping_list_outputs" && $method === "GET") {
         ];
     }
     echo json_encode(["ok" => true, "files" => $files]);
+    exit;
+}
+
+if ($action === "mapping_get_control_points" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $map_stem = trim((string)($_GET["map_stem"] ?? ""));
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $image = (string)($files["image_png"] ?? "");
+    $control_csv = (string)($files["control_csv"] ?? "");
+    if ($image === "" || !file_exists($image)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "image_png_missing"]);
+        exit;
+    }
+    if ($control_csv === "") {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "control_csv_path_missing"]);
+        exit;
+    }
+    ensure_control_csv_header($control_csv);
+    $dims = @getimagesize($image);
+    $points = mapping_read_control_points($control_csv);
+    echo json_encode([
+        "ok" => true,
+        "image_url" => "api/index.php?action=mapping_download_output&map_stem=" . rawurlencode($map_stem) . "&file_key=image_png",
+        "image_width" => is_array($dims) ? (int)($dims[0] ?? 0) : 0,
+        "image_height" => is_array($dims) ? (int)($dims[1] ?? 0) : 0,
+        "points" => $points,
+    ]);
+    exit;
+}
+
+if ($action === "mapping_add_control_point" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $b = body_json();
+    $map_stem = trim((string)($b["map_stem"] ?? ""));
+    $asset_type = clean_asset_type((string)($b["asset_type"] ?? ""));
+    $asset_id = trim((string)($b["asset_id"] ?? ""));
+    $pixel_x_raw = trim((string)($b["pixel_x"] ?? ""));
+    $pixel_y_raw = trim((string)($b["pixel_y"] ?? ""));
+    $lon_raw = trim((string)($b["lon"] ?? ""));
+    $lat_raw = trim((string)($b["lat"] ?? ""));
+    $label = trim((string)($b["label"] ?? ""));
+
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    if ($asset_type === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_asset_type"]);
+        exit;
+    }
+    if (!is_numeric($pixel_x_raw) || !is_numeric($pixel_y_raw)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_pixel_coords"]);
+        exit;
+    }
+    $pixel_x = (int)round((float)$pixel_x_raw);
+    $pixel_y = (int)round((float)$pixel_y_raw);
+
+    $coord_source = "manual";
+    $asset_action = "none";
+    $asset = null;
+    if ($asset_id !== "") {
+        $asset = get_asset_row($pdo, $asset_type, $asset_id);
+        if (($lon_raw === "" || $lat_raw === "") && $asset) {
+            $asset_lon = $asset["lon"] !== null ? trim((string)$asset["lon"]) : "";
+            $asset_lat = $asset["lat"] !== null ? trim((string)$asset["lat"]) : "";
+            if ($asset_lon !== "" && $asset_lat !== "") {
+                $lon_raw = $asset_lon;
+                $lat_raw = $asset_lat;
+                $coord_source = "asset";
+            }
+        }
+    }
+    if ($lon_raw === "" || $lat_raw === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_lon_or_lat"]);
+        exit;
+    }
+    if (!is_numeric($lon_raw) || !is_numeric($lat_raw)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_lon_or_lat"]);
+        exit;
+    }
+
+    if ($asset_id !== "") {
+        if ($asset) {
+            if ($coord_source !== "asset") {
+                $stmt = $pdo->prepare(
+                    "UPDATE assets SET lat = :lat, lon = :lon
+                     WHERE asset_type = :asset_type AND asset_id = :asset_id"
+                );
+                $stmt->execute([
+                    ":lat" => $lat_raw,
+                    ":lon" => $lon_raw,
+                    ":asset_type" => $asset_type,
+                    ":asset_id" => $asset_id,
+                ]);
+                $asset_action = "updated";
+            }
+        } else {
+            $stmt = $pdo->prepare(
+                "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
+                 VALUES (:asset_type, :asset_id, '', '', :lat, :lon, '')"
+            );
+            $stmt->execute([
+                ":asset_type" => $asset_type,
+                ":asset_id" => $asset_id,
+                ":lat" => $lat_raw,
+                ":lon" => $lon_raw,
+            ]);
+            $asset_action = "created";
+        }
+    }
+
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $control_csv = (string)($files["control_csv"] ?? "");
+    if ($control_csv === "") {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "control_csv_path_missing"]);
+        exit;
+    }
+    mapping_append_control_point($control_csv, [
+        "pixel_x" => (string)$pixel_x,
+        "pixel_y" => (string)$pixel_y,
+        "lon" => $lon_raw,
+        "lat" => $lat_raw,
+        "asset_type" => $asset_type,
+        "asset_id" => $asset_id,
+        "label" => $label,
+    ]);
+
+    echo json_encode([
+        "ok" => true,
+        "coord_source" => $coord_source,
+        "asset_action" => $asset_action,
+        "point" => [
+            "pixel_x" => (string)$pixel_x,
+            "pixel_y" => (string)$pixel_y,
+            "lon" => $lon_raw,
+            "lat" => $lat_raw,
+            "asset_type" => $asset_type,
+            "asset_id" => $asset_id,
+            "label" => $label,
+        ],
+    ]);
+    exit;
+}
+
+if ($action === "mapping_get_structure_points" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $map_stem = trim((string)($_GET["map_stem"] ?? ""));
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $image = (string)($files["image_png"] ?? "");
+    $structures_csv = (string)($files["structure_csv"] ?? "");
+    if ($image === "" || !file_exists($image)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "image_png_missing"]);
+        exit;
+    }
+    if ($structures_csv === "") {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "structure_csv_path_missing"]);
+        exit;
+    }
+    ensure_structure_csv_header($structures_csv);
+    $dims = @getimagesize($image);
+    $points = mapping_read_structure_points($structures_csv);
+    $affine = mapping_load_world_affine($image);
+    echo json_encode([
+        "ok" => true,
+        "image_url" => "api/index.php?action=mapping_download_output&map_stem=" . rawurlencode($map_stem) . "&file_key=image_png",
+        "image_width" => is_array($dims) ? (int)($dims[0] ?? 0) : 0,
+        "image_height" => is_array($dims) ? (int)($dims[1] ?? 0) : 0,
+        "world_file_found" => $affine !== null,
+        "points" => $points,
+    ]);
+    exit;
+}
+
+if ($action === "mapping_add_structure_point" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $b = body_json();
+    $map_stem = trim((string)($b["map_stem"] ?? ""));
+    $structure_type = clean_asset_type((string)($b["structure_type"] ?? ""));
+    $structure_id = trim((string)($b["structure_id"] ?? ""));
+    $pixel_x_raw = trim((string)($b["pixel_x"] ?? ""));
+    $pixel_y_raw = trim((string)($b["pixel_y"] ?? ""));
+    $label = trim((string)($b["label"] ?? ""));
+    $upsert_asset = (bool)($b["upsert_asset"] ?? true);
+
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    if ($structure_type === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_structure_type"]);
+        exit;
+    }
+    if ($structure_id === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_structure_id"]);
+        exit;
+    }
+    if (!is_numeric($pixel_x_raw) || !is_numeric($pixel_y_raw)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_pixel_coords"]);
+        exit;
+    }
+
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $image = (string)($files["image_png"] ?? "");
+    $structures_csv = (string)($files["structure_csv"] ?? "");
+    if ($image === "" || !file_exists($image)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "image_png_missing"]);
+        exit;
+    }
+    if ($structures_csv === "") {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "structure_csv_path_missing"]);
+        exit;
+    }
+    $affine = mapping_load_world_affine($image);
+    if ($affine === null) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "world_file_missing"]);
+        exit;
+    }
+
+    $pixel_x = (int)round((float)$pixel_x_raw);
+    $pixel_y = (int)round((float)$pixel_y_raw);
+    $coords = mapping_pixel_to_map($affine, (float)$pixel_x, (float)$pixel_y);
+    $lon = number_format((float)$coords["lon"], 6, ".", "");
+    $lat = number_format((float)$coords["lat"], 6, ".", "");
+
+    mapping_append_structure_point($structures_csv, [
+        "structure_id" => $structure_id,
+        "structure_type" => $structure_type,
+        "pixel_x" => (string)$pixel_x,
+        "pixel_y" => (string)$pixel_y,
+        "lon" => $lon,
+        "lat" => $lat,
+    ]);
+
+    $asset_action = "none";
+    if ($upsert_asset) {
+        $asset = get_asset_row($pdo, $structure_type, $structure_id);
+        if ($asset) {
+            $stmt = $pdo->prepare(
+                "UPDATE assets SET lat = :lat, lon = :lon
+                 WHERE asset_type = :asset_type AND asset_id = :asset_id"
+            );
+            $stmt->execute([
+                ":lat" => $lat,
+                ":lon" => $lon,
+                ":asset_type" => $structure_type,
+                ":asset_id" => $structure_id,
+            ]);
+            $asset_action = "updated";
+        } else {
+            $stmt = $pdo->prepare(
+                "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
+                 VALUES (:asset_type, :asset_id, '', '', :lat, :lon, :notes)"
+            );
+            $stmt->execute([
+                ":asset_type" => $structure_type,
+                ":asset_id" => $structure_id,
+                ":lat" => $lat,
+                ":lon" => $lon,
+                ":notes" => $label === "" ? "" : ("Map label: " . $label),
+            ]);
+            $asset_action = "created";
+        }
+    }
+
+    echo json_encode([
+        "ok" => true,
+        "asset_action" => $asset_action,
+        "point" => [
+            "structure_id" => $structure_id,
+            "structure_type" => $structure_type,
+            "pixel_x" => (string)$pixel_x,
+            "pixel_y" => (string)$pixel_y,
+            "lon" => $lon,
+            "lat" => $lat,
+        ],
+    ]);
     exit;
 }
 
