@@ -442,7 +442,8 @@ if ($action === "list_assets" && $method === "GET") {
 
 if ($action === "create_asset" && $method === "POST") {
     $b = body_json();
-    $asset_type = clean_asset_type((string)($b["asset_type"] ?? ""));
+    $asset_type_input = strtolower(trim((string)($b["asset_type"] ?? "")));
+    $asset_type = $asset_type_input === "landmark" ? "landmark" : clean_asset_type($asset_type_input);
     $asset_id = trim((string)($b["asset_id"] ?? ""));
     if ($asset_type === "" || $asset_id === "") {
         http_response_code(400);
@@ -1077,7 +1078,7 @@ if ($action === "mapping_add_control_point" && $method === "POST") {
     $coord_source = "manual";
     $asset_action = "none";
     $asset = null;
-    if ($asset_id !== "") {
+    if ($asset_type !== "landmark" && $asset_id !== "") {
         $asset = get_asset_row($pdo, $asset_type, $asset_id);
         if (($lon_raw === "" || $lat_raw === "") && $asset) {
             $asset_lon = $asset["lon"] !== null ? trim((string)$asset["lon"]) : "";
@@ -1100,7 +1101,7 @@ if ($action === "mapping_add_control_point" && $method === "POST") {
         exit;
     }
 
-    if ($asset_id !== "") {
+    if ($asset_type !== "landmark" && $asset_id !== "") {
         if ($asset) {
             if ($coord_source !== "asset") {
                 $stmt = $pdo->prepare(

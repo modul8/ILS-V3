@@ -65,7 +65,7 @@ if (($current_user["role"] ?? "") !== "admin") {
       <div id="mappingFiles" class="photo-list"></div>
       <hr>
       <h2>5) Web Click Control Points</h2>
-      <p class="meta">Click directly on the map image in browser to append control points.</p>
+      <p class="meta">Click directly on the map image in browser to append control points. Existing points are kept unless you run Init Inputs again.</p>
       <div class="line">
         <button class="btn" id="mappingLoadClickToolBtn" type="button">Load Map For Clicking</button>
         <label class="meta">Zoom

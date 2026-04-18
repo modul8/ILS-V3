@@ -298,10 +298,10 @@
   }
 
   async function saveClickedControlPoint(pixelX, pixelY) {
-    const assetTypeInput = window.prompt("Asset type (culvert/bridge/floodgate/drain):", lastType || "culvert");
+    const assetTypeInput = window.prompt("Asset type (culvert/bridge/floodgate/drain/landmark):", lastType || "culvert");
     if (assetTypeInput === null) return;
     const asset_type = String(assetTypeInput || "").trim().toLowerCase();
-    if (!["culvert", "bridge", "floodgate", "drain"].includes(asset_type)) {
+    if (!["culvert", "bridge", "floodgate", "drain", "landmark"].includes(asset_type)) {
       setMessage("Invalid asset type.", false);
       return;
     }
