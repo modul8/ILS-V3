@@ -1,0 +1,6 @@
+* text=auto
+
+# Keep shell scripts LF on all platforms
+*.sh text eol=lf
+deploy.sh text eol=lf
+
