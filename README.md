@@ -57,6 +57,8 @@ Asset types supported:
 - `web/api/index.php` - backend API
 - `web/jobs.php` - jobs list + CSV import
 - `web/mapping_tools.php` - mapping script runner (admin only)
+- `docker/php-apache-python/Dockerfile` - PHP Apache image with Python tooling
+- `.github/workflows/build-web-image.yml` - CI build/push to GHCR
 - `web/schema.sql` - DB schema and migration alters
 - `web/config.sample.php` - configuration template
 
@@ -121,6 +123,18 @@ These make contact fields fully optional.
 - API endpoints require a valid logged-in session.
 - Keep `web/config.php` out of source control.
 - Mapping tools require PHP `exec` to be enabled and Python available on server.
+
+## Container Image (GHCR)
+
+This repo can build/push a custom web image to:
+
+- `ghcr.io/modul8/ils-v3-php-apache:latest`
+
+Trigger options:
+
+- Push to `main` with Docker/workflow changes
+- Create a tag like `v3.0.0`
+- Manual run from Actions tab
 
 ## Requirements
 
