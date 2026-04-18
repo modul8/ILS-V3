@@ -219,7 +219,9 @@ function mapping_candidate_files(string $map_stem, array $dirs): array {
     return [
         "source_pdf" => path_join($input_dir, $map_stem . ".pdf"),
         "control_csv" => path_join($input_dir, $map_stem . "_control_points.csv"),
+        "control_csv_qgis" => path_join($input_dir, $map_stem . "_control_points_qgis.csv"),
         "structure_csv" => path_join($input_dir, $map_stem . "_structure_truth.csv"),
+        "structure_csv_qgis" => path_join($input_dir, $map_stem . "_structure_truth_qgis.csv"),
         "structure_georef_csv" => path_join($input_dir, $map_stem . "_structure_truth_georef.csv"),
         "structure_geojson" => path_join($input_dir, $map_stem . "_structure_truth_georef.geojson"),
         "image_png" => $png,
@@ -279,6 +281,42 @@ function mapping_append_control_point(string $csv_path, array $row): void {
     }
     fputcsv($fh, $ordered);
     fclose($fh);
+}
+
+function mapping_write_qgis_safe_csv(string $source_csv, string $target_csv, array $fields): void {
+    if (!file_exists($source_csv) || filesize($source_csv) === 0) {
+        return;
+    }
+    $in = fopen($source_csv, "rb");
+    if (!$in) return;
+
+    $header = fgetcsv($in);
+    if (!is_array($header)) {
+        fclose($in);
+        return;
+    }
+    $idx = array_flip(array_map(function ($h) { return strtolower(trim((string)$h)); }, $header));
+
+    $out = fopen($target_csv, "wb");
+    if (!$out) {
+        fclose($in);
+        return;
+    }
+    // UTF-8 BOM improves compatibility with some QGIS CSV parsing setups on Windows.
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, $fields);
+    while (($line = fgetcsv($in)) !== false) {
+        if (!is_array($line)) continue;
+        $row = [];
+        foreach ($fields as $f) {
+            $i = $idx[strtolower($f)] ?? null;
+            $v = ($i !== null && isset($line[$i])) ? trim((string)$line[$i]) : "";
+            $row[] = $v;
+        }
+        fputcsv($out, $row);
+    }
+    fclose($out);
+    fclose($in);
 }
 
 function mapping_structure_fields(): array {
@@ -1013,6 +1051,7 @@ if ($action === "mapping_get_control_points" && $method === "GET") {
     $files = mapping_candidate_files($map_stem, $dirs);
     $image = (string)($files["image_png"] ?? "");
     $control_csv = (string)($files["control_csv"] ?? "");
+    $control_csv_qgis = (string)($files["control_csv_qgis"] ?? "");
     if ($image === "" || !file_exists($image)) {
         http_response_code(400);
         echo json_encode(["ok" => false, "error" => "image_png_missing"]);
@@ -1024,6 +1063,9 @@ if ($action === "mapping_get_control_points" && $method === "GET") {
         exit;
     }
     ensure_control_csv_header($control_csv);
+    if ($control_csv_qgis !== "") {
+        mapping_write_qgis_safe_csv($control_csv, $control_csv_qgis, mapping_control_fields());
+    }
     $dims = @getimagesize($image);
     $points = mapping_read_control_points($control_csv);
     echo json_encode([
@@ -1134,6 +1176,7 @@ if ($action === "mapping_add_control_point" && $method === "POST") {
     $dirs = mapping_dirs($cfg, true);
     $files = mapping_candidate_files($map_stem, $dirs);
     $control_csv = (string)($files["control_csv"] ?? "");
+    $control_csv_qgis = (string)($files["control_csv_qgis"] ?? "");
     if ($control_csv === "") {
         http_response_code(500);
         echo json_encode(["ok" => false, "error" => "control_csv_path_missing"]);
@@ -1148,6 +1191,9 @@ if ($action === "mapping_add_control_point" && $method === "POST") {
         "asset_id" => $asset_id,
         "label" => $label,
     ]);
+    if ($control_csv_qgis !== "") {
+        mapping_write_qgis_safe_csv($control_csv, $control_csv_qgis, mapping_control_fields());
+    }
 
     echo json_encode([
         "ok" => true,
@@ -1187,6 +1233,7 @@ if ($action === "mapping_get_structure_points" && $method === "GET") {
     $files = mapping_candidate_files($map_stem, $dirs);
     $image = (string)($files["image_png"] ?? "");
     $structures_csv = (string)($files["structure_csv"] ?? "");
+    $structures_csv_qgis = (string)($files["structure_csv_qgis"] ?? "");
     if ($image === "" || !file_exists($image)) {
         http_response_code(400);
         echo json_encode(["ok" => false, "error" => "image_png_missing"]);
@@ -1198,6 +1245,9 @@ if ($action === "mapping_get_structure_points" && $method === "GET") {
         exit;
     }
     ensure_structure_csv_header($structures_csv);
+    if ($structures_csv_qgis !== "") {
+        mapping_write_qgis_safe_csv($structures_csv, $structures_csv_qgis, mapping_structure_fields());
+    }
     $dims = @getimagesize($image);
     $points = mapping_read_structure_points($structures_csv);
     $affine = mapping_load_world_affine($image);
@@ -1257,6 +1307,7 @@ if ($action === "mapping_add_structure_point" && $method === "POST") {
     $files = mapping_candidate_files($map_stem, $dirs);
     $image = (string)($files["image_png"] ?? "");
     $structures_csv = (string)($files["structure_csv"] ?? "");
+    $structures_csv_qgis = (string)($files["structure_csv_qgis"] ?? "");
     if ($image === "" || !file_exists($image)) {
         http_response_code(400);
         echo json_encode(["ok" => false, "error" => "image_png_missing"]);
@@ -1288,6 +1339,9 @@ if ($action === "mapping_add_structure_point" && $method === "POST") {
         "lon" => $lon,
         "lat" => $lat,
     ]);
+    if ($structures_csv_qgis !== "") {
+        mapping_write_qgis_safe_csv($structures_csv, $structures_csv_qgis, mapping_structure_fields());
+    }
 
     $asset_action = "none";
     if ($upsert_asset) {
