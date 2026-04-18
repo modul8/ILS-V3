@@ -9,4 +9,5 @@ return [
     "mapping_enabled" => false,
     "mapping_pipeline_root" => "/mnt/evo-pool/apps/drain-map-pipeline",
     "mapping_python_bin" => "/opt/ils-v3-py/bin/python",
+    "mapping_api_key" => "change_me_mapping_key",
 ];

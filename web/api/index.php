@@ -15,7 +15,7 @@ require_once dirname(__DIR__) . "/_auth.php";
 
 function clean_asset_type(string $v): string {
     $v = strtolower(trim($v));
-    return in_array($v, ["drain", "culvert", "bridge"], true) ? $v : "";
+    return in_array($v, ["drain", "culvert", "bridge", "floodgate"], true) ? $v : "";
 }
 
 function body_json(): array {
@@ -145,6 +145,17 @@ function mapping_enabled(array $cfg): bool {
     return (bool)($cfg["mapping_enabled"] ?? false);
 }
 
+function mapping_api_key_valid(array $cfg): bool {
+    $expected = trim((string)($cfg["mapping_api_key"] ?? ""));
+    if ($expected === "") return false;
+
+    $provided = trim((string)($_SERVER["HTTP_X_ILS_MAPPING_KEY"] ?? ""));
+    if ($provided === "") $provided = trim((string)($_SERVER["HTTP_X_API_KEY"] ?? ""));
+    if ($provided === "") $provided = trim((string)($_GET["mapping_key"] ?? ""));
+    if ($provided === "") return false;
+    return hash_equals($expected, $provided);
+}
+
 function mapping_root(array $cfg): string {
     $p = trim((string)($cfg["mapping_pipeline_root"] ?? ""));
     return $p;
@@ -217,8 +228,20 @@ function mapping_candidate_files(string $map_stem, array $dirs): array {
     ];
 }
 
+$action = $_GET["action"] ?? "";
+$method = $_SERVER["REQUEST_METHOD"] ?? "GET";
+$mapping_key_ok = mapping_api_key_valid($cfg);
+
+$public_mapping_actions = [
+    "mapping_asset_lookup",
+    "mapping_asset_upsert",
+];
+
 $current_user = auth_current_user();
-if (!$current_user) {
+if (
+    !$current_user &&
+    !($mapping_key_ok && in_array($action, $public_mapping_actions, true))
+) {
     http_response_code(401);
     echo json_encode(["ok" => false, "error" => "unauthorized"]);
     exit;
@@ -231,9 +254,6 @@ try {
     echo json_encode(["ok" => false, "error" => "db_connect_failed"]);
     exit;
 }
-
-$action = $_GET["action"] ?? "";
-$method = $_SERVER["REQUEST_METHOD"] ?? "GET";
 
 if ($action === "get_asset" && $method === "GET") {
     $asset_type = clean_asset_type((string)($_GET["asset_type"] ?? ""));
@@ -614,6 +634,99 @@ if ($action === "import_jobs_csv" && $method === "POST") {
         "matched_assets" => $matched,
         "unmatched_assets" => $unmatched,
     ]);
+    exit;
+}
+
+if ($action === "mapping_asset_lookup" && $method === "GET") {
+    if (!$mapping_key_ok) {
+        http_response_code(401);
+        echo json_encode(["ok" => false, "error" => "unauthorized"]);
+        exit;
+    }
+    $asset_type = clean_asset_type((string)($_GET["asset_type"] ?? ""));
+    $asset_id = trim((string)($_GET["asset_id"] ?? ""));
+    if ($asset_type === "" || $asset_id === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_asset_type_or_id"]);
+        exit;
+    }
+
+    $asset = get_asset_row($pdo, $asset_type, $asset_id);
+    if (!$asset) {
+        echo json_encode(["ok" => true, "found" => false]);
+        exit;
+    }
+
+    $lat = $asset["lat"] !== null ? trim((string)$asset["lat"]) : "";
+    $lon = $asset["lon"] !== null ? trim((string)$asset["lon"]) : "";
+    echo json_encode([
+        "ok" => true,
+        "found" => true,
+        "asset_type" => (string)$asset["asset_type"],
+        "asset_id" => (string)$asset["asset_id"],
+        "lat" => $lat,
+        "lon" => $lon,
+        "has_coords" => ($lat !== "" && $lon !== ""),
+    ]);
+    exit;
+}
+
+if ($action === "mapping_asset_upsert" && $method === "POST") {
+    if (!$mapping_key_ok) {
+        http_response_code(401);
+        echo json_encode(["ok" => false, "error" => "unauthorized"]);
+        exit;
+    }
+    $b = body_json();
+    $asset_type = clean_asset_type((string)($b["asset_type"] ?? ""));
+    $asset_id = trim((string)($b["asset_id"] ?? ""));
+    $lat_raw = trim((string)($b["lat"] ?? ""));
+    $lon_raw = trim((string)($b["lon"] ?? ""));
+    if ($asset_type === "" || $asset_id === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_asset_type_or_id"]);
+        exit;
+    }
+    if ($lat_raw === "" || $lon_raw === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_lat_or_lon"]);
+        exit;
+    }
+    if (!is_numeric($lat_raw) || !is_numeric($lon_raw)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_lat_or_lon"]);
+        exit;
+    }
+
+    $asset = get_asset_row($pdo, $asset_type, $asset_id);
+    if ($asset) {
+        $stmt = $pdo->prepare(
+            "UPDATE assets
+             SET lat = :lat, lon = :lon
+             WHERE asset_type = :asset_type AND asset_id = :asset_id"
+        );
+        $stmt->execute([
+            ":lat" => $lat_raw,
+            ":lon" => $lon_raw,
+            ":asset_type" => $asset_type,
+            ":asset_id" => $asset_id,
+        ]);
+        echo json_encode(["ok" => true, "created" => false, "updated" => true]);
+        exit;
+    }
+
+    $stmt = $pdo->prepare(
+        "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
+         VALUES (:asset_type, :asset_id, '', '', :lat, :lon, '')"
+    );
+    $stmt->execute([
+        ":asset_type" => $asset_type,
+        ":asset_id" => $asset_id,
+        ":lat" => $lat_raw,
+        ":lon" => $lon_raw,
+    ]);
+
+    echo json_encode(["ok" => true, "created" => true, "updated" => false]);
     exit;
 }
 

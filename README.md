@@ -71,11 +71,12 @@ Asset types supported:
 1. Copy `web/config.sample.php` to `web/config.php`.
 2. Edit DB credentials in `web/config.php`.
 3. Optional for mapping tools: set `mapping_enabled`, `mapping_pipeline_root`, `mapping_python_bin`.
-4. Run `web/schema.sql` against your MariaDB/MySQL database.
-5. Deploy the contents of `web/` to your web root on TrueNAS.
-6. Ensure `web/uploads/` is writable by the web server user.
-7. Open `/setup_admin.php` once and create the first admin account.
-8. Sign in at `/login.php`.
+4. Optional for control-point asset auto-sync: set `mapping_api_key` (used by `pipeline/scripts/label_control_points.py`).
+5. Run `web/schema.sql` against your MariaDB/MySQL database.
+6. Deploy the contents of `web/` to your web root on TrueNAS.
+7. Ensure `web/uploads/` is writable by the web server user.
+8. Open `/setup_admin.php` once and create the first admin account.
+9. Sign in at `/login.php`.
 
 ### Optional: Use Deploy Script
 
@@ -124,7 +125,7 @@ These make contact fields fully optional.
 
 - Authentication is session-based.
 - Passwords are stored with PHP `password_hash`.
-- API endpoints require a valid logged-in session.
+- API endpoints require a valid logged-in session, except mapping asset lookup/upsert endpoints when `mapping_api_key` is provided.
 - Keep `web/config.php` out of source control.
 - Mapping tools require PHP `exec` to be enabled and Python available on server.
 

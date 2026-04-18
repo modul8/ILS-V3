@@ -70,6 +70,7 @@ Default path behavior:
   - `mapping_enabled` => `true`
   - `mapping_pipeline_root` => absolute path to `drain-map-pipeline`
   - `mapping_python_bin` => python executable path (example `/usr/bin/python3`)
+  - `mapping_api_key` => random secret for control-point asset lookup/upsert from pipeline scripts
 
 Example:
 

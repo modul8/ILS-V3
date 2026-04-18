@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
+import os
 from pathlib import Path
 from typing import Any
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 
 import cv2
 
@@ -76,24 +81,98 @@ def default_control_csv_for_image(image_path: Path) -> Path:
     return Path("input_pdfs") / f"{map_stem}_control_points.csv"
 
 
-def prompt_control_point_details(default_type: str = "") -> tuple[str, str, str, str, str] | None:
+class AssetApiClient:
+    def __init__(self, base_url: str, mapping_key: str) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.mapping_key = mapping_key.strip()
+        if not self.base_url or not self.mapping_key:
+            raise ValueError("Asset API base URL and mapping key are required.")
+
+    def _request(
+        self,
+        action: str,
+        method: str = "GET",
+        params: dict[str, str] | None = None,
+        body: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        query = {"action": action}
+        if params:
+            query.update(params)
+        url = f"{self.base_url}/api/index.php?{urlparse.urlencode(query)}"
+        data_bytes = None
+        headers = {"X-ILS-MAPPING-KEY": self.mapping_key}
+        if method.upper() == "POST":
+            headers["Content-Type"] = "application/json"
+            data_bytes = json.dumps(body or {}).encode("utf-8")
+        req = urlrequest.Request(url=url, method=method.upper(), headers=headers, data=data_bytes)
+        with urlrequest.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        parsed = json.loads(raw) if raw.strip() else {}
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Unexpected API response shape.")
+        return parsed
+
+    def lookup_asset(self, asset_type: str, asset_id: str) -> dict[str, Any]:
+        return self._request(
+            "mapping_asset_lookup",
+            "GET",
+            params={"asset_type": asset_type, "asset_id": asset_id},
+        )
+
+    def upsert_asset(self, asset_type: str, asset_id: str, lon: str, lat: str) -> dict[str, Any]:
+        return self._request(
+            "mapping_asset_upsert",
+            "POST",
+            body={"asset_type": asset_type, "asset_id": asset_id, "lon": lon, "lat": lat},
+        )
+
+
+def build_asset_api_client(base_url: str | None = None, mapping_key: str | None = None) -> AssetApiClient | None:
+    base = (base_url or os.environ.get("ILS_V3_API_BASE_URL", "")).strip()
+    key = (mapping_key or os.environ.get("ILS_V3_MAPPING_API_KEY", "")).strip()
+    if not base or not key:
+        return None
+    return AssetApiClient(base, key)
+
+
+def prompt_control_point_details(
+    default_type: str = "",
+    asset_client: AssetApiClient | None = None,
+) -> tuple[str, str, str, str, str, bool] | None:
     try:
         import tkinter as tk
         from tkinter import simpledialog
     except Exception:
         asset_type = input("Asset type [culvert/bridge/floodgate/drain] (required): ").strip().lower()
         asset_id = input("Asset number (optional): ").strip()
-        lon = input("Enter longitude (required): ").strip()
-        lat = input("Enter latitude (required): ").strip()
+        lon = ""
+        lat = ""
+        found_in_assets = False
+        if asset_client and asset_type in ("culvert", "bridge", "floodgate", "drain") and asset_id:
+            try:
+                result = asset_client.lookup_asset(asset_type=asset_type, asset_id=asset_id)
+                if result.get("ok") and result.get("found") and result.get("has_coords"):
+                    lon = str(result.get("lon", "")).strip()
+                    lat = str(result.get("lat", "")).strip()
+                    found_in_assets = True
+                    print(f"Auto-filled from assets: lon={lon}, lat={lat}")
+            except Exception as exc:
+                print(f"Asset lookup failed, using manual coordinates. {exc}")
+        if not lon:
+            lon = input("Enter longitude (required): ").strip()
+        if not lat:
+            lat = input("Enter latitude (required): ").strip()
         label = input("Enter optional landmark label: ").strip()
         if not asset_type or asset_type not in ("culvert", "bridge", "floodgate", "drain") or not lon or not lat:
             return None
-        return asset_type, asset_id, lon, lat, label
+        return asset_type, asset_id, lon, lat, label, found_in_assets
 
     class ControlPointDialog(simpledialog.Dialog):
         def __init__(self, parent: Any, title: str) -> None:
             self.asset_type_options = ("culvert", "bridge", "floodgate", "drain")
             self.asset_type_placeholder = "Select asset type..."
+            self.asset_client = asset_client
+            self.found_in_assets = False
             base_default = (default_type or "").strip().lower()
             if base_default not in self.asset_type_options:
                 base_default = self.asset_type_placeholder
@@ -149,11 +228,24 @@ def prompt_control_point_details(default_type: str = "") -> tuple[str, str, str,
             self.update_idletasks()
             asset_type_raw = self.type_combo.get().strip()
             asset_type = asset_type_raw.lower()
+            asset_id = self.id_entry.get().strip()
             lon = self.lon_entry.get().strip()
             lat = self.lat_entry.get().strip()
             if asset_type not in self.asset_type_options:
                 messagebox.showerror("Missing Asset Type", "Select an asset type before saving.")
                 return False
+            self.found_in_assets = False
+            if self.asset_client and asset_id:
+                try:
+                    result = self.asset_client.lookup_asset(asset_type=asset_type, asset_id=asset_id)
+                    if result.get("ok") and result.get("found") and result.get("has_coords"):
+                        lon = str(result.get("lon", "")).strip()
+                        lat = str(result.get("lat", "")).strip()
+                        self.lon_var.set(lon)
+                        self.lat_var.set(lat)
+                        self.found_in_assets = True
+                except Exception as exc:
+                    messagebox.showwarning("Asset Lookup Failed", f"Using manual coordinates.\n{exc}")
             if not lon or not lat:
                 messagebox.showerror("Missing Coordinates", "Longitude and latitude are required.")
                 return False
@@ -175,6 +267,7 @@ def prompt_control_point_details(default_type: str = "") -> tuple[str, str, str,
                 self.lon_entry.get().strip(),
                 self.lat_entry.get().strip(),
                 self.label_entry.get().strip(),
+                self.found_in_assets,
             )
 
     root = tk.Tk()
@@ -190,6 +283,8 @@ def capture_control_points(
     output_csv: Path,
     scale: float = 0.25,
     overwrite: bool = False,
+    asset_api_base_url: str | None = None,
+    asset_api_key: str | None = None,
 ) -> None:
     image = cv2.imread(str(image_path))
     if image is None:
@@ -202,6 +297,7 @@ def capture_control_points(
     else:
         ensure_csv_header(output_csv)
     existing_rows = count_csv_rows(output_csv)
+    asset_client = build_asset_api_client(base_url=asset_api_base_url, mapping_key=asset_api_key)
 
     height, width = image.shape[:2]
     window_width = min(1400, max(900, int(width * min(1.0, scale))))
@@ -247,11 +343,11 @@ def capture_control_points(
             pixel_y = int(round(state["offset_y"] + y / state["effective_scale"]))
             pixel_x = max(0, min(width - 1, pixel_x))
             pixel_y = max(0, min(height - 1, pixel_y))
-            details = prompt_control_point_details(default_type=state["last_type"])
+            details = prompt_control_point_details(default_type=state["last_type"], asset_client=asset_client)
             if details is None:
                 print("Point skipped (lon/lat required).")
                 return
-            asset_type, asset_id, lon, lat, label = details
+            asset_type, asset_id, lon, lat, label, found_in_assets = details
             if not asset_type:
                 print("Point skipped (asset type required).")
                 return
@@ -268,6 +364,13 @@ def capture_control_points(
             state["count"] += 1
             state["last_point"] = (pixel_x, pixel_y)
             state["last_type"] = asset_type or state["last_type"]
+            if asset_client and asset_id and not found_in_assets:
+                try:
+                    upsert = asset_client.upsert_asset(asset_type=asset_type, asset_id=asset_id, lon=lon, lat=lat)
+                    if upsert.get("ok"):
+                        print(f"Asset list updated: {asset_type} {asset_id}")
+                except Exception as exc:
+                    print(f"Asset upsert skipped (API error): {exc}")
             print(
                 f"Saved control point #{state['count']}: pixel_x={pixel_x}, pixel_y={pixel_y}, "
                 f"asset_type={asset_type or '-'}, asset_id={asset_id or '-'}, "
@@ -284,6 +387,10 @@ def capture_control_points(
     print(f"Image: {image_path}")
     print(f"Output CSV: {output_csv}")
     print(f"Existing rows in CSV: {existing_rows}")
+    if asset_client:
+        print(f"Asset API: enabled ({asset_client.base_url})")
+    else:
+        print("Asset API: disabled (manual lon/lat only)")
     print("Left click opens lon/lat dialog and saves on OK.")
     print("Mouse wheel or +/- to zoom. WASD or arrows to pan. Press Q to quit.")
 
@@ -351,6 +458,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--scale", type=float, default=0.25, help="Display scale for image window (default: 0.25)")
     parser.add_argument("--overwrite", action="store_true", help="Reset output CSV to header before capturing points")
+    parser.add_argument(
+        "--asset-api-base-url",
+        default="",
+        help="ILS-V3 web base URL (for example: http://192.168.0.20:38081). Can also be set via ILS_V3_API_BASE_URL.",
+    )
+    parser.add_argument(
+        "--asset-api-key",
+        default="",
+        help="ILS-V3 mapping API key. Can also be set via ILS_V3_MAPPING_API_KEY.",
+    )
     return parser
 
 
@@ -360,7 +477,14 @@ def main() -> int:
     try:
         image_path = args.image_path.resolve()
         output_csv = args.output_csv.resolve() if args.output_csv else default_control_csv_for_image(image_path).resolve()
-        capture_control_points(image_path=image_path, output_csv=output_csv, scale=args.scale, overwrite=args.overwrite)
+        capture_control_points(
+            image_path=image_path,
+            output_csv=output_csv,
+            scale=args.scale,
+            overwrite=args.overwrite,
+            asset_api_base_url=(args.asset_api_base_url or "").strip() or None,
+            asset_api_key=(args.asset_api_key or "").strip() or None,
+        )
     except Exception as exc:
         print(f"Error: {exc}")
         return 1

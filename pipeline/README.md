@@ -174,11 +174,26 @@ For clicking map control points directly (pixel + lon/lat):
 python scripts/label_control_points.py "outputs/images/Map 11 - Shire of Busselton & Capel_page_001.png" --scale 0.25 --overwrite
 ```
 
+To auto-use existing asset GPS from ILS-V3 (and auto-create/update missing assets when manual lon/lat is entered), set:
+
+```bash
+export ILS_V3_API_BASE_URL="http://<ils-host>:<port>"
+export ILS_V3_MAPPING_API_KEY="<mapping_api_key>"
+```
+
+Or pass directly:
+
+```bash
+python scripts/label_control_points.py "outputs/images/Map 11 - Shire of Busselton & Capel_page_001.png" --asset-api-base-url "http://<ils-host>:<port>" --asset-api-key "<mapping_api_key>"
+```
+
 Control point dialog includes:
 - asset type picker (`culvert`, `bridge`, `floodgate`, `drain`)
 - asset number (optional)
 - lon/lat (required)
 - optional free-text label
+- when asset type + asset number exists in ILS-V3 with coords, lon/lat are auto-filled from the asset list
+- when asset is missing, manual lon/lat can be entered and the asset is added/updated in ILS-V3 automatically
 
 Left-click each known structure center; a dialog captures:
 - `structure_id`
