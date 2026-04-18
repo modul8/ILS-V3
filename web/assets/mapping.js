@@ -30,11 +30,23 @@
   const structLayer = document.getElementById("mappingStructLayer");
   const structList = document.getElementById("mappingStructList");
   const structUpsertAsset = document.getElementById("mappingStructUpsertAsset");
+  const pointModal = document.getElementById("mappingPointModal");
+  const pointModalTitle = document.getElementById("mappingPointModalTitle");
+  const pointType = document.getElementById("mappingPointType");
+  const pointId = document.getElementById("mappingPointId");
+  const pointLon = document.getElementById("mappingPointLon");
+  const pointLat = document.getElementById("mappingPointLat");
+  const pointLabel = document.getElementById("mappingPointLabel");
+  const pointCoordsRow = document.getElementById("mappingPointCoordsRow");
+  const pointModalError = document.getElementById("mappingPointModalError");
+  const pointCancelBtn = document.getElementById("mappingPointCancelBtn");
+  const pointSaveBtn = document.getElementById("mappingPointSaveBtn");
 
   let lastType = "culvert";
   let lastStructType = "culvert";
   let controlPoints = [];
   let structurePoints = [];
+  let modalResolve = null;
 
   function esc(v) {
     return String(v || "")
@@ -66,6 +78,48 @@
   function inferStem(pdfName) {
     if (!pdfName) return "";
     return pdfName.replace(/\.pdf$/i, "");
+  }
+
+  function setTypeOptions(options, selectedValue) {
+    if (!pointType) return;
+    pointType.innerHTML = options.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+    pointType.value = options.includes(selectedValue) ? selectedValue : options[0];
+  }
+
+  function openPointModal(mode, defaults) {
+    return new Promise((resolve) => {
+      if (!pointModal) {
+        resolve(null);
+        return;
+      }
+      modalResolve = resolve;
+      const d = defaults || {};
+      if (pointModalError) pointModalError.textContent = "";
+      if (pointModalTitle) {
+        pointModalTitle.textContent = mode === "control" ? "Add Control Point" : "Add Structure Point";
+      }
+      if (mode === "control") {
+        setTypeOptions(["culvert", "bridge", "floodgate", "drain", "landmark"], d.type || "culvert");
+        if (pointCoordsRow) pointCoordsRow.style.display = "";
+      } else {
+        setTypeOptions(["culvert", "bridge", "floodgate", "drain"], d.type || "culvert");
+        if (pointCoordsRow) pointCoordsRow.style.display = "none";
+      }
+      if (pointId) pointId.value = d.id || "";
+      if (pointLon) pointLon.value = d.lon || "";
+      if (pointLat) pointLat.value = d.lat || "";
+      if (pointLabel) pointLabel.value = d.label || "";
+      pointModal.classList.remove("hidden");
+      if (pointType) pointType.focus();
+    });
+  }
+
+  function closePointModal(result) {
+    if (!pointModal) return;
+    pointModal.classList.add("hidden");
+    const resolver = modalResolve;
+    modalResolve = null;
+    if (resolver) resolver(result || null);
   }
 
   function centerMapInWrap(wrapEl, imageEl) {
@@ -321,18 +375,14 @@
   }
 
   async function saveClickedControlPoint(pixelX, pixelY) {
-    const assetTypeInput = window.prompt("Asset type (culvert/bridge/floodgate/drain/landmark):", lastType || "culvert");
-    if (assetTypeInput === null) return;
-    const asset_type = String(assetTypeInput || "").trim().toLowerCase();
-    if (!["culvert", "bridge", "floodgate", "drain", "landmark"].includes(asset_type)) {
-      setMessage("Invalid asset type.", false);
-      return;
-    }
+    const payload = await openPointModal("control", { type: lastType || "culvert" });
+    if (!payload) return;
+    const asset_type = payload.type;
     lastType = asset_type;
-    const asset_id = String(window.prompt("Asset number (optional):", "") || "").trim();
-    const lon = String(window.prompt("Longitude (leave blank to auto-use asset coords):", "") || "").trim();
-    const lat = String(window.prompt("Latitude (leave blank to auto-use asset coords):", "") || "").trim();
-    const label = String(window.prompt("Landmark label (optional):", "") || "").trim();
+    const asset_id = payload.id;
+    const lon = payload.lon;
+    const lat = payload.lat;
+    const label = payload.label;
 
     const map_stem = stemInput ? stemInput.value.trim() : "";
     if (!map_stem) {
@@ -360,20 +410,16 @@
   }
 
   async function saveClickedStructurePoint(pixelX, pixelY) {
-    const typeInput = window.prompt("Structure type (culvert/bridge/floodgate/drain):", lastStructType || "culvert");
-    if (typeInput === null) return;
-    const structure_type = String(typeInput || "").trim().toLowerCase();
-    if (!["culvert", "bridge", "floodgate", "drain"].includes(structure_type)) {
-      setMessage("Invalid structure type.", false);
-      return;
-    }
+    const payload = await openPointModal("structure", { type: lastStructType || "culvert" });
+    if (!payload) return;
+    const structure_type = payload.type;
     lastStructType = structure_type;
-    const structure_id = String(window.prompt("Structure/Asset ID (required):", "") || "").trim();
+    const structure_id = payload.id;
     if (!structure_id) {
       setMessage("Structure ID is required.", false);
       return;
     }
-    const label = String(window.prompt("Optional note/label:", "") || "").trim();
+    const label = payload.label;
 
     const map_stem = stemInput ? stemInput.value.trim() : "";
     if (!map_stem) {
@@ -425,6 +471,26 @@
   if (zoomInput) zoomInput.addEventListener("input", applyZoom);
   if (loadClickToolBtn) loadClickToolBtn.addEventListener("click", refreshControlPoints);
   if (loadStructToolBtn) loadStructToolBtn.addEventListener("click", refreshStructurePoints);
+  if (pointCancelBtn) pointCancelBtn.addEventListener("click", () => closePointModal(null));
+  if (pointSaveBtn) {
+    pointSaveBtn.addEventListener("click", () => {
+      const type = String(pointType && pointType.value ? pointType.value : "").trim().toLowerCase();
+      const id = String(pointId && pointId.value ? pointId.value : "").trim();
+      const lon = String(pointLon && pointLon.value ? pointLon.value : "").trim();
+      const lat = String(pointLat && pointLat.value ? pointLat.value : "").trim();
+      const label = String(pointLabel && pointLabel.value ? pointLabel.value : "").trim();
+      if (!type) {
+        if (pointModalError) pointModalError.textContent = "Type is required.";
+        return;
+      }
+      closePointModal({ type, id, lon, lat, label });
+    });
+  }
+  if (pointModal) {
+    pointModal.addEventListener("click", (ev) => {
+      if (ev.target === pointModal) closePointModal(null);
+    });
+  }
 
   if (pdfSelect) {
     pdfSelect.addEventListener("change", () => {

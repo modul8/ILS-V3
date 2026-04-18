@@ -104,6 +104,36 @@ if (($current_user["role"] ?? "") !== "admin") {
     </section>
   </main>
 
+  <div id="mappingPointModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <h3 id="mappingPointModalTitle">Add Point</h3>
+      <div class="grid">
+        <label>Type
+          <select id="mappingPointType"></select>
+        </label>
+        <label>ID / Number
+          <input id="mappingPointId" placeholder="Optional for control points">
+        </label>
+      </div>
+      <div id="mappingPointCoordsRow" class="grid">
+        <label>Longitude
+          <input id="mappingPointLon" placeholder="Optional if existing asset has coords">
+        </label>
+        <label>Latitude
+          <input id="mappingPointLat" placeholder="Optional if existing asset has coords">
+        </label>
+      </div>
+      <label>Label (optional)
+        <input id="mappingPointLabel">
+      </label>
+      <div id="mappingPointModalError" class="error"></div>
+      <div class="line">
+        <button class="btn btn-secondary" id="mappingPointCancelBtn" type="button">Cancel</button>
+        <button class="btn" id="mappingPointSaveBtn" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script src="assets/mapping.js"></script>
 </body>
 </html>
