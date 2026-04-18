@@ -1,0 +1,10 @@
+# Runtime/generated data
+input_pdfs/*
+outputs/*
+scripts/__pycache__/
+
+# Keep directory scaffolding
+!input_pdfs/.gitkeep
+!outputs/.gitkeep
+!outputs/images/.gitkeep
+

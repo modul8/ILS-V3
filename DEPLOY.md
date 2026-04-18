@@ -2,7 +2,11 @@
 
 This is a practical deployment checklist for ILS V3 on your TrueNAS-hosted web stack.
 
-Quick option: run [`deploy.sh`](./deploy.sh) from `repo/`. By default it deploys to sibling `app/` and writes backups to sibling `backups/`.
+Quick option: run [`deploy.sh`](./deploy.sh) from `repo/`. By default it:
+
+- deploys web app to sibling `app/`
+- writes backups to sibling `backups/`
+- syncs bundled pipeline code to sibling `pipeline/` (without deleting runtime `input_pdfs/` and `outputs/`)
 
 ## 1) Preflight
 
@@ -56,6 +60,7 @@ Default path behavior:
 - If script is at `/mnt/apps/ils_v3/repo/deploy.sh`
 - Deploy target is `/mnt/apps/ils_v3/app/`
 - Backup target is `/mnt/apps/ils_v3/backups/`
+- Pipeline target is `/mnt/apps/ils_v3/pipeline/`
 
 ## 4) Ensure Required Files
 

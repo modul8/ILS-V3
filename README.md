@@ -62,6 +62,7 @@ Asset types supported:
 - `web/mapping_tools.php` - mapping script runner (admin only)
 - `docker/php-apache-python/Dockerfile` - PHP Apache image with Python tooling
 - `.github/workflows/build-web-image.yml` - CI build/push to GHCR
+- `pipeline/` - bundled drain-map-pipeline scripts and Python requirements
 - `web/schema.sql` - DB schema and migration alters
 - `web/config.sample.php` - configuration template
 

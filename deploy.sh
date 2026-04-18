@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage:
 #   ./deploy.sh
 # Optional env vars:
-#   SRC_WEB_DIR, DEST_DIR, BACKUP_DIR, APP_OWNER, DB_MIGRATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS, SCHEMA_FILE
+#   SRC_WEB_DIR, DEST_DIR, BACKUP_DIR, PIPELINE_SRC_DIR, PIPELINE_DEST_DIR, APP_OWNER, DB_MIGRATE, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS, SCHEMA_FILE
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
@@ -13,6 +13,8 @@ BASE_DIR="$(dirname "$SCRIPT_DIR")"
 SRC_WEB_DIR="${SRC_WEB_DIR:-$SCRIPT_DIR/web/}"
 DEST_DIR="${DEST_DIR:-$BASE_DIR/app/}"
 BACKUP_DIR="${BACKUP_DIR:-$BASE_DIR/backups/}"
+PIPELINE_SRC_DIR="${PIPELINE_SRC_DIR:-$SCRIPT_DIR/pipeline/}"
+PIPELINE_DEST_DIR="${PIPELINE_DEST_DIR:-$BASE_DIR/pipeline/}"
 APP_OWNER="${APP_OWNER:-}"
 
 DB_MIGRATE="${DB_MIGRATE:-0}"
@@ -32,8 +34,10 @@ fail() { echo "[deploy][error] $*" >&2; exit 1; }
 command -v rsync >/dev/null 2>&1 || fail "rsync is required"
 
 [ -d "$SRC_WEB_DIR" ] || fail "Source web dir not found: $SRC_WEB_DIR"
+[ -d "$PIPELINE_SRC_DIR" ] || fail "Source pipeline dir not found: $PIPELINE_SRC_DIR"
 mkdir -p "$DEST_DIR"
 mkdir -p "$BACKUP_DIR"
+mkdir -p "$PIPELINE_DEST_DIR"
 
 log "Creating app backup"
 if [ -d "$DEST_DIR" ]; then
@@ -62,6 +66,19 @@ fi
 log "Setting permissions"
 chmod -R u+rwX,go+rX "$DEST_DIR" || warn "chmod app dir failed"
 chmod -R u+rwX,go+rwx "$DEST_DIR/uploads" || warn "chmod uploads failed"
+
+log "Syncing pipeline files"
+rsync -av --delete \
+  --exclude 'input_pdfs/' \
+  --exclude 'outputs/' \
+  --exclude '__pycache__/' \
+  "$PIPELINE_SRC_DIR" \
+  "$PIPELINE_DEST_DIR"
+
+log "Ensuring pipeline runtime directories"
+mkdir -p "$PIPELINE_DEST_DIR/input_pdfs" "$PIPELINE_DEST_DIR/outputs/images"
+chmod -R u+rwX,go+rX "$PIPELINE_DEST_DIR" || warn "chmod pipeline dir failed"
+chmod -R u+rwX,go+rwx "$PIPELINE_DEST_DIR/input_pdfs" "$PIPELINE_DEST_DIR/outputs" || warn "chmod pipeline runtime dirs failed"
 
 if [ "$DB_MIGRATE" = "1" ]; then
   [ -n "$DB_NAME" ] || fail "DB_NAME required when DB_MIGRATE=1"
@@ -93,3 +110,4 @@ log "Next checks:"
 log "  1) Login at /login.php"
 log "  2) Verify role permissions (admin vs user)"
 log "  3) Verify notes + photo upload + map pin links"
+log "  4) Verify mapping tools can list/upload PDFs"
