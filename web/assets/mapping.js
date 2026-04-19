@@ -95,6 +95,27 @@
     pointType.value = options.includes(selectedValue) ? selectedValue : options[0];
   }
 
+  function clearMapClickViews() {
+    controlPoints = [];
+    structurePoints = [];
+    controlCenteredOnce = false;
+    structureCenteredOnce = false;
+    if (clickImage) {
+      clickImage.removeAttribute("src");
+      clickImage.style.display = "none";
+    }
+    if (structImage) {
+      structImage.removeAttribute("src");
+      structImage.style.display = "none";
+    }
+    if (pointLayer) pointLayer.innerHTML = "";
+    if (structLayer) structLayer.innerHTML = "";
+    if (clickMeta) clickMeta.textContent = "";
+    if (structMeta) structMeta.textContent = "";
+    if (pointList) pointList.innerHTML = `<div class="meta">No control points loaded for current map.</div>`;
+    if (structList) structList.innerHTML = `<div class="meta">No structure points loaded for current map.</div>`;
+  }
+
   function openPointModal(mode, defaults) {
     return new Promise((resolve) => {
       if (!pointModal) {
@@ -571,6 +592,7 @@
     pdfSelect.addEventListener("change", () => {
       const p = pdfSelect.value || "";
       if (!stemInput.value.trim()) stemInput.value = inferStem(p);
+      clearMapClickViews();
     });
   }
   if (refreshBtn) refreshBtn.addEventListener("click", refreshPdfs);
@@ -584,8 +606,7 @@
   if (outputsBtn) outputsBtn.addEventListener("click", refreshOutputs);
   if (stemInput) {
     stemInput.addEventListener("change", async () => {
-      controlCenteredOnce = false;
-      structureCenteredOnce = false;
+      clearMapClickViews();
       await refreshOutputs();
       await refreshControlPoints();
       await refreshStructurePoints();
