@@ -1092,7 +1092,8 @@ if ($action === "mapping_add_control_point" && $method === "POST") {
     }
     $b = body_json();
     $map_stem = trim((string)($b["map_stem"] ?? ""));
-    $asset_type = clean_asset_type((string)($b["asset_type"] ?? ""));
+    $asset_type_input = strtolower(trim((string)($b["asset_type"] ?? $b["type"] ?? "")));
+    $asset_type = $asset_type_input === "landmark" ? "landmark" : clean_asset_type($asset_type_input);
     $asset_id = trim((string)($b["asset_id"] ?? ""));
     $pixel_x_raw = trim((string)($b["pixel_x"] ?? ""));
     $pixel_y_raw = trim((string)($b["pixel_y"] ?? ""));
