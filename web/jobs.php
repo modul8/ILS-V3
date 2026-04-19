@@ -17,6 +17,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
       <a href="drains.php">Drains</a>
       <a href="culverts.php">Culverts</a>
       <a href="bridges.php">Bridges</a>
+      <a href="floodgates.php">Floodgates</a>
       <a class="active" href="jobs.php">Jobs</a>
       <?php if ($is_admin): ?><a href="mapping_tools.php">Mapping Tools</a><?php endif; ?>
       <a href="index.php">Home</a>
@@ -54,6 +55,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
             <option value="drain">Drain</option>
             <option value="culvert">Culvert</option>
             <option value="bridge">Bridge</option>
+            <option value="floodgate">Floodgate</option>
           </select>
         </label>
         <label>Search

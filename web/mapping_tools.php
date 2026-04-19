@@ -21,6 +21,7 @@ if (($current_user["role"] ?? "") !== "admin") {
       <a href="drains.php">Drains</a>
       <a href="culverts.php">Culverts</a>
       <a href="bridges.php">Bridges</a>
+      <a href="floodgates.php">Floodgates</a>
       <a href="jobs.php">Jobs</a>
       <a class="active" href="mapping_tools.php">Mapping Tools</a>
       <a href="index.php">Home</a>
@@ -83,7 +84,7 @@ if (($current_user["role"] ?? "") !== "admin") {
       <div id="mappingPointList" class="list-table-wrap"></div>
       <hr>
       <h2>6) Web Click Asset Points (From Georeferenced Map)</h2>
-      <p class="meta">Requires georeference first (`.pgw` present). Click map to add assets with auto-derived lon/lat.</p>
+      <p class="meta">Requires georeference first (`.pgw` present). Click map to add assets with auto-derived lat/lon.</p>
       <div class="line">
         <button class="btn" id="mappingLoadStructToolBtn" type="button">Load Georef Click Tool</button>
         <label class="meta">
@@ -99,6 +100,14 @@ if (($current_user["role"] ?? "") !== "admin") {
         </div>
       </div>
       <div id="mappingStructList" class="list-table-wrap"></div>
+      <hr>
+      <h2>7) Build Asset Collection GeoJSON (All Maps)</h2>
+      <p class="meta">Creates <code>all_assets.geojson</code> plus one file per asset type from all georeferenced map outputs.</p>
+      <div class="line">
+        <button class="btn" id="mappingBuildCollectionsBtn" type="button">Build Asset Collections</button>
+        <button class="btn btn-secondary" id="mappingCollectionsRefreshBtn" type="button">Refresh Collection Files</button>
+      </div>
+      <div id="mappingCollectionsFiles" class="photo-list"></div>
       <div id="mappingMsg"></div>
       <pre id="mappingOutput" class="log-box"></pre>
     </section>
@@ -116,11 +125,11 @@ if (($current_user["role"] ?? "") !== "admin") {
         </label>
       </div>
       <div id="mappingPointCoordsRow" class="grid">
-        <label>Longitude
-          <input id="mappingPointLon" placeholder="Optional if existing asset has coords">
-        </label>
         <label>Latitude
           <input id="mappingPointLat" placeholder="Optional if existing asset has coords">
+        </label>
+        <label>Longitude
+          <input id="mappingPointLon" placeholder="Optional if existing asset has coords">
         </label>
       </div>
       <label>Label (optional)

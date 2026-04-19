@@ -4,6 +4,7 @@
   const msg = document.getElementById("mappingMsg");
   const output = document.getElementById("mappingOutput");
   const filesWrap = document.getElementById("mappingFiles");
+  const collectionsFilesWrap = document.getElementById("mappingCollectionsFiles");
   const uploadInput = document.getElementById("mappingUploadPdf");
 
   const refreshBtn = document.getElementById("mappingRefreshPdfsBtn");
@@ -12,6 +13,8 @@
   const convertBtn = document.getElementById("mappingConvertBtn");
   const georefBtn = document.getElementById("mappingGeorefBtn");
   const structBtn = document.getElementById("mappingStructBtn");
+  const buildCollectionsBtn = document.getElementById("mappingBuildCollectionsBtn");
+  const collectionsRefreshBtn = document.getElementById("mappingCollectionsRefreshBtn");
   const outputsBtn = document.getElementById("mappingOutputsBtn");
 
   const loadClickToolBtn = document.getElementById("mappingLoadClickToolBtn");
@@ -51,6 +54,8 @@
   let modalMode = "control";
   let modalLookupTimer = null;
   let modalLookupSeq = 0;
+  let controlCenteredOnce = false;
+  let structureCenteredOnce = false;
 
   function esc(v) {
     return String(v || "")
@@ -152,7 +157,7 @@
     const bits = [];
     if (wo) bits.push(`WO: ${wo}`);
     if (po) bits.push(`PO: ${po}`);
-    if (hasLonLat) bits.push(`lon/lat: ${a.lon}, ${a.lat}`);
+    if (hasLonLat) bits.push(`lat/lon: ${a.lat}, ${a.lon}`);
     if (pointAssetHint) {
       pointAssetHint.textContent = bits.length ? `Found existing asset. ${bits.join(" | ")}` : "Found existing asset.";
     }
@@ -180,11 +185,6 @@
     wrapEl.scrollTop = targetTop;
   }
 
-  function recenterBothMaps() {
-    centerMapInWrap(clickWrap, clickImage);
-    centerMapInWrap(structWrap, structImage);
-  }
-
   function applyZoom() {
     if (!clickImage) return;
     const zoom = Number(zoomInput && zoomInput.value ? zoomInput.value : 100);
@@ -197,7 +197,6 @@
     }
     renderControlPoints();
     renderStructurePoints();
-    window.requestAnimationFrame(recenterBothMaps);
   }
 
   function renderDots(layer, image, rows, typeKey, idKey) {
@@ -240,7 +239,7 @@
     pointList.innerHTML = `
       <table>
         <thead>
-          <tr><th>#</th><th>Type</th><th>ID</th><th>Pixel</th><th>Lon</th><th>Lat</th><th>Label</th></tr>
+          <tr><th>#</th><th>Type</th><th>ID</th><th>Pixel</th><th>Lat</th><th>Lon</th><th>Label</th></tr>
         </thead>
         <tbody>
           ${controlPoints.map((p, i) => `
@@ -249,8 +248,8 @@
               <td>${esc(p.asset_type)}</td>
               <td>${esc(p.asset_id)}</td>
               <td>${esc(`${p.pixel_x}, ${p.pixel_y}`)}</td>
-              <td>${esc(p.lon)}</td>
               <td>${esc(p.lat)}</td>
+              <td>${esc(p.lon)}</td>
               <td>${esc(p.label)}</td>
             </tr>
           `).join("")}
@@ -269,7 +268,7 @@
     structList.innerHTML = `
       <table>
         <thead>
-          <tr><th>#</th><th>Type</th><th>ID</th><th>Pixel</th><th>Lon</th><th>Lat</th></tr>
+          <tr><th>#</th><th>Type</th><th>ID</th><th>Pixel</th><th>Lat</th><th>Lon</th></tr>
         </thead>
         <tbody>
           ${structurePoints.map((p, i) => `
@@ -278,8 +277,8 @@
               <td>${esc(p.structure_type)}</td>
               <td>${esc(p.structure_id)}</td>
               <td>${esc(`${p.pixel_x}, ${p.pixel_y}`)}</td>
-              <td>${esc(p.lon)}</td>
               <td>${esc(p.lat)}</td>
+              <td>${esc(p.lon)}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -301,7 +300,10 @@
         clickImage.style.display = "block";
         applyZoom();
         renderControlPoints();
-        window.requestAnimationFrame(() => centerMapInWrap(clickWrap, clickImage));
+        if (!controlCenteredOnce) {
+          window.requestAnimationFrame(() => centerMapInWrap(clickWrap, clickImage));
+          controlCenteredOnce = true;
+        }
         if (clickMeta) {
           clickMeta.textContent = `Image size: ${r.image_width} x ${r.image_height} | Control points: ${controlPoints.length}`;
         }
@@ -324,7 +326,10 @@
         structImage.style.display = "block";
         applyZoom();
         renderStructurePoints();
-        window.requestAnimationFrame(() => centerMapInWrap(structWrap, structImage));
+        if (!structureCenteredOnce) {
+          window.requestAnimationFrame(() => centerMapInWrap(structWrap, structImage));
+          structureCenteredOnce = true;
+        }
         if (structMeta) {
           const world = r.world_file_found ? "yes" : "no";
           structMeta.textContent = `Image size: ${r.image_width} x ${r.image_height} | Georef world file: ${world} | Structure points: ${structurePoints.length}`;
@@ -397,6 +402,26 @@
     `).join("");
   }
 
+  async function refreshCollections() {
+    if (!collectionsFilesWrap) return;
+    const r = await api("mapping_list_asset_collections", "GET", null, null);
+    if (!r.ok) {
+      collectionsFilesWrap.innerHTML = `<div class="meta">No collection files yet.</div>`;
+      return;
+    }
+    const files = Array.isArray(r.files) ? r.files : [];
+    if (!files.length) {
+      collectionsFilesWrap.innerHTML = `<div class="meta">No collection files yet.</div>`;
+      return;
+    }
+    collectionsFilesWrap.innerHTML = files.map((f) => `
+      <div class="photo-item">
+        <div>${esc(f.name)} <span class="meta">(${Number(f.size || 0).toLocaleString()} bytes)</span></div>
+        <a class="link" href="${esc(f.download_url)}">Download</a>
+      </div>
+    `).join("");
+  }
+
   async function runOperation(operation) {
     const pdf_name = pdfSelect ? pdfSelect.value : "";
     const map_stem = stemInput ? stemInput.value.trim() : "";
@@ -416,6 +441,9 @@
     }
     if (operation === "georef_map" || operation === "build_structure_geojson") {
       await refreshStructurePoints();
+    }
+    if (operation === "build_asset_collections") {
+      await refreshCollections();
     }
   }
 
@@ -551,9 +579,13 @@
   if (convertBtn) convertBtn.addEventListener("click", () => runOperation("convert_pdf"));
   if (georefBtn) georefBtn.addEventListener("click", () => runOperation("georef_map"));
   if (structBtn) structBtn.addEventListener("click", () => runOperation("build_structure_geojson"));
+  if (buildCollectionsBtn) buildCollectionsBtn.addEventListener("click", () => runOperation("build_asset_collections"));
+  if (collectionsRefreshBtn) collectionsRefreshBtn.addEventListener("click", refreshCollections);
   if (outputsBtn) outputsBtn.addEventListener("click", refreshOutputs);
   if (stemInput) {
     stemInput.addEventListener("change", async () => {
+      controlCenteredOnce = false;
+      structureCenteredOnce = false;
       await refreshOutputs();
       await refreshControlPoints();
       await refreshStructurePoints();
@@ -561,4 +593,5 @@
   }
 
   refreshPdfs();
+  refreshCollections();
 })();

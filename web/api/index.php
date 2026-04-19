@@ -197,17 +197,20 @@ function mapping_dirs(array $cfg, bool $ensure = false): array {
     $input_dir = path_join($root, "input_pdfs");
     $outputs_dir = path_join($root, "outputs");
     $images_dir = path_join($outputs_dir, "images");
+    $collections_dir = path_join($outputs_dir, "asset_collections");
     $scripts_dir = path_join($root, "scripts");
 
     if ($ensure) {
         if (!is_dir($input_dir)) @mkdir($input_dir, 0775, true);
         if (!is_dir($images_dir)) @mkdir($images_dir, 0775, true);
+        if (!is_dir($collections_dir)) @mkdir($collections_dir, 0775, true);
     }
     return [
         "root" => $root,
         "input_dir" => $input_dir,
         "outputs_dir" => $outputs_dir,
         "images_dir" => $images_dir,
+        "collections_dir" => $collections_dir,
         "scripts_dir" => $scripts_dir,
     ];
 }
@@ -227,6 +230,17 @@ function mapping_candidate_files(string $map_stem, array $dirs): array {
         "image_png" => $png,
         "image_world" => preg_replace('/\.png$/i', ".pgw", $png),
         "image_prj" => preg_replace('/\.png$/i', ".prj", $png),
+    ];
+}
+
+function mapping_collection_files(array $dirs): array {
+    $collections_dir = (string)($dirs["collections_dir"] ?? "");
+    return [
+        "all_assets" => path_join($collections_dir, "all_assets.geojson"),
+        "drains" => path_join($collections_dir, "drains.geojson"),
+        "culverts" => path_join($collections_dir, "culverts.geojson"),
+        "bridges" => path_join($collections_dir, "bridges.geojson"),
+        "floodgates" => path_join($collections_dir, "floodgates.geojson"),
     ];
 }
 
@@ -1031,6 +1045,32 @@ if ($action === "mapping_list_outputs" && $method === "GET") {
     exit;
 }
 
+if ($action === "mapping_list_asset_collections" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $files = [];
+    foreach (mapping_collection_files($dirs) as $key => $path) {
+        if (!file_exists($path)) continue;
+        $files[] = [
+            "key" => $key,
+            "name" => basename($path),
+            "size" => filesize($path),
+            "download_url" => "api/index.php?action=mapping_download_asset_collection&file_key=" . rawurlencode($key),
+        ];
+    }
+    echo json_encode(["ok" => true, "files" => $files]);
+    exit;
+}
+
 if ($action === "mapping_get_control_points" && $method === "GET") {
     if (!auth_is_admin($current_user)) {
         http_response_code(403);
@@ -1432,6 +1472,37 @@ if ($action === "mapping_download_output" && $method === "GET") {
     exit;
 }
 
+if ($action === "mapping_download_asset_collection" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $file_key = trim((string)($_GET["file_key"] ?? ""));
+    if ($file_key === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_file_key"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $path = mapping_collection_files($dirs)[$file_key] ?? "";
+    if ($path === "" || !file_exists($path)) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "file_not_found"]);
+        exit;
+    }
+    header("Content-Type: application/geo+json");
+    header("Content-Length: " . (string)filesize($path));
+    header("Content-Disposition: attachment; filename=\"" . basename($path) . "\"");
+    readfile($path);
+    exit;
+}
+
 if ($action === "mapping_run" && $method === "POST") {
     if (!auth_is_admin($current_user)) {
         http_response_code(403);
@@ -1523,6 +1594,23 @@ if ($action === "mapping_run" && $method === "POST") {
             "--structures-csv",
             $structures_csv,
             "--include-control-assets",
+        ];
+    } elseif ($operation === "build_asset_collections") {
+        $collections_dir = (string)($dirs["collections_dir"] ?? "");
+        if ($collections_dir === "") {
+            http_response_code(500);
+            echo json_encode(["ok" => false, "error" => "collections_dir_missing"]);
+            exit;
+        }
+        if (!is_dir($collections_dir) && !@mkdir($collections_dir, 0775, true)) {
+            http_response_code(500);
+            echo json_encode(["ok" => false, "error" => "collections_dir_unavailable"]);
+            exit;
+        }
+        $cmd_parts = [
+            path_join($scripts_dir, "build_asset_collections.py"),
+            $input_dir,
+            $collections_dir,
         ];
     } else {
         http_response_code(400);

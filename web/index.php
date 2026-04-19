@@ -35,6 +35,10 @@ require __DIR__ . "/_bootstrap.php";
         <h2>Bridges</h2>
         <p>Search and manage bridge assets.</p>
       </a>
+      <a class="tile" href="floodgates.php">
+        <h2>Floodgates</h2>
+        <p>Search and manage floodgate assets.</p>
+      </a>
       <a class="tile" href="jobs.php">
         <h2>Jobs</h2>
         <p>Import work lists and link jobs to asset coordinates.</p>
