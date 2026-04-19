@@ -37,6 +37,7 @@
   const pointLon = document.getElementById("mappingPointLon");
   const pointLat = document.getElementById("mappingPointLat");
   const pointLabel = document.getElementById("mappingPointLabel");
+  const pointAssetHint = document.getElementById("mappingPointAssetHint");
   const pointCoordsRow = document.getElementById("mappingPointCoordsRow");
   const pointModalError = document.getElementById("mappingPointModalError");
   const pointCancelBtn = document.getElementById("mappingPointCancelBtn");
@@ -47,6 +48,9 @@
   let controlPoints = [];
   let structurePoints = [];
   let modalResolve = null;
+  let modalMode = "control";
+  let modalLookupTimer = null;
+  let modalLookupSeq = 0;
 
   function esc(v) {
     return String(v || "")
@@ -93,8 +97,10 @@
         return;
       }
       modalResolve = resolve;
+      modalMode = mode;
       const d = defaults || {};
       if (pointModalError) pointModalError.textContent = "";
+      if (pointAssetHint) pointAssetHint.textContent = "";
       if (pointModalTitle) {
         pointModalTitle.textContent = mode === "control" ? "Add Control Point" : "Add Structure Point";
       }
@@ -111,6 +117,7 @@
       if (pointLabel) pointLabel.value = d.label || "";
       pointModal.classList.remove("hidden");
       if (pointType) pointType.focus();
+      scheduleModalAssetLookup();
     });
   }
 
@@ -120,6 +127,44 @@
     const resolver = modalResolve;
     modalResolve = null;
     if (resolver) resolver(result || null);
+  }
+
+  async function lookupModalAsset() {
+    const type = String(pointType && pointType.value ? pointType.value : "").trim().toLowerCase();
+    const id = String(pointId && pointId.value ? pointId.value : "").trim();
+    const lookupSeq = ++modalLookupSeq;
+    if (pointAssetHint) pointAssetHint.textContent = "";
+    if (!type || !id || type === "landmark") return;
+    const r = await api("get_asset", "GET", null, { asset_type: type, asset_id: id });
+    if (lookupSeq !== modalLookupSeq) return;
+    if (!r || !r.ok || !r.asset) {
+      if (pointAssetHint) pointAssetHint.textContent = "No existing asset match found.";
+      return;
+    }
+    const a = r.asset;
+    const hasLonLat = a.lon !== "" && a.lat !== "";
+    if (modalMode === "control" && hasLonLat) {
+      if (pointLon) pointLon.value = String(a.lon);
+      if (pointLat) pointLat.value = String(a.lat);
+    }
+    const wo = String(a.work_order || "").trim();
+    const po = String(a.purchase_order || "").trim();
+    const bits = [];
+    if (wo) bits.push(`WO: ${wo}`);
+    if (po) bits.push(`PO: ${po}`);
+    if (hasLonLat) bits.push(`lon/lat: ${a.lon}, ${a.lat}`);
+    if (pointAssetHint) {
+      pointAssetHint.textContent = bits.length ? `Found existing asset. ${bits.join(" | ")}` : "Found existing asset.";
+    }
+  }
+
+  function scheduleModalAssetLookup() {
+    if (modalLookupTimer) clearTimeout(modalLookupTimer);
+    modalLookupTimer = setTimeout(() => {
+      lookupModalAsset().catch(() => {
+        if (pointAssetHint) pointAssetHint.textContent = "";
+      });
+    }, 180);
   }
 
   function centerMapInWrap(wrapEl, imageEl) {
@@ -491,6 +536,8 @@
       if (ev.target === pointModal) closePointModal(null);
     });
   }
+  if (pointType) pointType.addEventListener("change", scheduleModalAssetLookup);
+  if (pointId) pointId.addEventListener("input", scheduleModalAssetLookup);
 
   if (pdfSelect) {
     pdfSelect.addEventListener("change", () => {

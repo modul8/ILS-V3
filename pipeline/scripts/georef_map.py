@@ -145,10 +145,54 @@ def write_prj_file(image_path: Path, target_crs: str) -> Path:
     return prj_path
 
 
+def _load_control_asset_features(
+    control_points_csv: Path,
+    transform: AffineTransform,
+) -> list[dict[str, Any]]:
+    features: list[dict[str, Any]] = []
+    with control_points_csv.open("r", encoding="utf-8-sig", newline="") as file:
+        reader = csv.DictReader(file)
+        fieldnames = [str(x).strip().lower() for x in (reader.fieldnames or [])]
+        if "pixel_x" not in fieldnames or "pixel_y" not in fieldnames:
+            return features
+        for row in reader:
+            asset_type = str(row.get("asset_type", "")).strip().lower()
+            asset_id = str(row.get("asset_id", "")).strip()
+            if asset_type == "" or asset_type == "landmark":
+                continue
+            if asset_id == "":
+                continue
+            try:
+                pixel_x = float(str(row.get("pixel_x", "")).strip())
+                pixel_y = float(str(row.get("pixel_y", "")).strip())
+            except ValueError:
+                continue
+            map_x, map_y = transform.pixel_to_map(pixel_x, pixel_y)
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [float(f"{map_x:.10f}"), float(f"{map_y:.10f}")],
+                    },
+                    "properties": {
+                        "source": "control_point",
+                        "asset_type": asset_type,
+                        "asset_id": asset_id,
+                        "label": str(row.get("label", "")).strip(),
+                        "pixel_x": str(int(round(pixel_x))),
+                        "pixel_y": str(int(round(pixel_y))),
+                    },
+                }
+            )
+    return features
+
+
 def georeference_structures(
     structures_csv: Path,
     transform: AffineTransform,
     target_crs: str,
+    control_points_csv: Path | None = None,
 ) -> tuple[Path, Path]:
     rows: list[dict[str, str]] = []
     with structures_csv.open("r", encoding="utf-8-sig", newline="") as file:
@@ -174,8 +218,14 @@ def georeference_structures(
         writer.writerows(rows)
 
     features: list[dict[str, Any]] = []
+    existing_keys: set[tuple[str, str]] = set()
     for row in rows:
         props = {k: v for k, v in row.items() if k not in {"map_x", "map_y"}}
+        props["source"] = "structure_point"
+        key_type = str(row.get("structure_type", "")).strip().lower()
+        key_id = str(row.get("structure_id", "")).strip()
+        if key_type and key_id:
+            existing_keys.add((key_type, key_id))
         features.append(
             {
                 "type": "Feature",
@@ -186,6 +236,15 @@ def georeference_structures(
                 "properties": props,
             }
         )
+
+    if control_points_csv is not None and control_points_csv.exists():
+        for feature in _load_control_asset_features(control_points_csv, transform):
+            props = feature.get("properties", {})
+            key_type = str(props.get("asset_type", "")).strip().lower()
+            key_id = str(props.get("asset_id", "")).strip()
+            if key_type and key_id and (key_type, key_id) in existing_keys:
+                continue
+            features.append(feature)
 
     geojson = {
         "type": "FeatureCollection",
@@ -203,6 +262,7 @@ def georeference_image(
     control_points_csv: Path,
     target_crs: str = "EPSG:4326",
     structures_csv: Path | None = None,
+    include_control_assets: bool = False,
 ) -> dict[str, Path | float]:
     image_path = image_path.resolve()
     control_points_csv = control_points_csv.resolve()
@@ -233,7 +293,12 @@ def georeference_image(
         structures_csv = structures_csv.resolve()
         if not structures_csv.exists():
             raise FileNotFoundError(f"Structures CSV not found: {structures_csv}")
-        georef_csv, geojson = georeference_structures(structures_csv, transform, target_crs)
+        georef_csv, geojson = georeference_structures(
+            structures_csv,
+            transform,
+            target_crs,
+            control_points_csv if include_control_assets else None,
+        )
         print(f"Georeferenced structures CSV: {georef_csv}")
         print(f"Georeferenced structures GeoJSON: {geojson}")
         results["structures_georef_csv"] = georef_csv
@@ -257,6 +322,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional structures CSV with pixel coordinates to georeference",
     )
+    parser.add_argument(
+        "--include-control-assets",
+        action="store_true",
+        help="Include non-landmark control-point assets in generated GeoJSON",
+    )
     return parser
 
 
@@ -269,6 +339,7 @@ def main() -> int:
             control_points_csv=args.control_points_csv,
             target_crs=args.target_crs,
             structures_csv=args.structures_csv,
+            include_control_assets=bool(args.include_control_assets),
         )
     except Exception as exc:
         print(f"Error: {exc}")

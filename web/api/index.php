@@ -1522,6 +1522,7 @@ if ($action === "mapping_run" && $method === "POST") {
             "EPSG:4326",
             "--structures-csv",
             $structures_csv,
+            "--include-control-assets",
         ];
     } else {
         http_response_code(400);

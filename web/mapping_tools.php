@@ -126,6 +126,7 @@ if (($current_user["role"] ?? "") !== "admin") {
       <label>Label (optional)
         <input id="mappingPointLabel">
       </label>
+      <div id="mappingPointAssetHint" class="meta"></div>
       <div id="mappingPointModalError" class="error"></div>
       <div class="line">
         <button class="btn btn-secondary" id="mappingPointCancelBtn" type="button">Cancel</button>
