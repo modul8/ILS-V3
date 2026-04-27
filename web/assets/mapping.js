@@ -634,7 +634,7 @@
   if (pdfSelect) {
     pdfSelect.addEventListener("change", () => {
       const p = pdfSelect.value || "";
-      if (!stemInput.value.trim()) stemInput.value = inferStem(p);
+      if (stemInput) stemInput.value = inferStem(p);
       clearMapClickViews();
     });
   }
