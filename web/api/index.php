@@ -297,6 +297,22 @@ function mapping_append_control_point(string $csv_path, array $row): void {
     fclose($fh);
 }
 
+function mapping_write_control_points(string $csv_path, array $rows): void {
+    $fh = fopen($csv_path, "wb");
+    if (!$fh) {
+        throw new RuntimeException("control_csv_open_failed");
+    }
+    fputcsv($fh, mapping_control_fields());
+    foreach ($rows as $row) {
+        $ordered = [];
+        foreach (mapping_control_fields() as $f) {
+            $ordered[] = (string)($row[$f] ?? "");
+        }
+        fputcsv($fh, $ordered);
+    }
+    fclose($fh);
+}
+
 function mapping_write_qgis_safe_csv(string $source_csv, string $target_csv, array $fields): void {
     if (!file_exists($source_csv) || filesize($source_csv) === 0) {
         return;
@@ -1254,6 +1270,61 @@ if ($action === "mapping_add_control_point" && $method === "POST") {
     exit;
 }
 
+if ($action === "mapping_delete_control_point" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $b = body_json();
+    $map_stem = trim((string)($b["map_stem"] ?? ""));
+    $index_raw = $b["index"] ?? null;
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    if (!is_numeric((string)$index_raw)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_index"]);
+        exit;
+    }
+    $index = (int)$index_raw;
+    if ($index < 0) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_index"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $control_csv = (string)($files["control_csv"] ?? "");
+    $control_csv_qgis = (string)($files["control_csv_qgis"] ?? "");
+    if ($control_csv === "") {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "control_csv_path_missing"]);
+        exit;
+    }
+    ensure_control_csv_header($control_csv);
+    $rows = mapping_read_control_points($control_csv);
+    if (!isset($rows[$index])) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "point_not_found"]);
+        exit;
+    }
+    array_splice($rows, $index, 1);
+    mapping_write_control_points($control_csv, $rows);
+    if ($control_csv_qgis !== "") {
+        mapping_write_qgis_safe_csv($control_csv, $control_csv_qgis, mapping_control_fields());
+    }
+    echo json_encode(["ok" => true, "remaining" => count($rows)]);
+    exit;
+}
+
 if ($action === "mapping_get_structure_points" && $method === "GET") {
     if (!auth_is_admin($current_user)) {
         http_response_code(403);
@@ -1557,6 +1628,25 @@ if ($action === "mapping_run" && $method === "POST") {
             exit;
         }
         $cmd_parts = [path_join($scripts_dir, "pdf_to_images.py"), $pdf_path, "--output-dir", $images_dir, "--dpi", "300"];
+    } elseif ($operation === "rotate_pdf") {
+        if ($pdf_name === "") {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "missing_pdf_name"]);
+            exit;
+        }
+        $pdf_path = path_join($input_dir, $pdf_name);
+        if (!file_exists($pdf_path) || !path_within($pdf_path, $input_dir)) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "invalid_pdf"]);
+            exit;
+        }
+        $degrees = (int)($b["degrees"] ?? 0);
+        if (!in_array($degrees, [90, -90, 180], true)) {
+            http_response_code(400);
+            echo json_encode(["ok" => false, "error" => "invalid_rotation_degrees"]);
+            exit;
+        }
+        $cmd_parts = [path_join($scripts_dir, "rotate_pdf.py"), $pdf_path, "--degrees", (string)$degrees];
     } elseif ($operation === "georef_map") {
         if ($map_stem === "") {
             http_response_code(400);

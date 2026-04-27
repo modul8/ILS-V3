@@ -53,6 +53,10 @@ if (($current_user["role"] ?? "") !== "admin") {
         </label>
       </div>
       <div class="line">
+        <button class="btn btn-secondary" id="mappingRotateCcwBtn" type="button">Rotate PDF -90°</button>
+        <button class="btn btn-secondary" id="mappingRotateCwBtn" type="button">Rotate PDF +90°</button>
+      </div>
+      <div class="line">
         <button class="btn" id="mappingInitBtn" type="button">1) Init Inputs</button>
         <button class="btn" id="mappingConvertBtn" type="button">2) Convert PDF to PNG</button>
       </div>

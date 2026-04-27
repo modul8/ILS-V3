@@ -11,6 +11,8 @@
   const uploadBtn = document.getElementById("mappingUploadBtn");
   const initBtn = document.getElementById("mappingInitBtn");
   const convertBtn = document.getElementById("mappingConvertBtn");
+  const rotateCcwBtn = document.getElementById("mappingRotateCcwBtn");
+  const rotateCwBtn = document.getElementById("mappingRotateCwBtn");
   const georefBtn = document.getElementById("mappingGeorefBtn");
   const structBtn = document.getElementById("mappingStructBtn");
   const buildCollectionsBtn = document.getElementById("mappingBuildCollectionsBtn");
@@ -208,6 +210,12 @@
 
   function applyZoom() {
     if (!clickImage) return;
+    const prevClickW = clickImage.clientWidth || 0;
+    const prevStructW = structImage && structImage.clientWidth ? structImage.clientWidth : 0;
+    const clickCenterRatioX = prevClickW > 0 ? (clickWrap.scrollLeft + (clickWrap.clientWidth / 2)) / prevClickW : 0.5;
+    const clickCenterRatioY = clickImage.clientHeight > 0 ? (clickWrap.scrollTop + (clickWrap.clientHeight / 2)) / clickImage.clientHeight : 0.5;
+    const structCenterRatioX = prevStructW > 0 ? (structWrap.scrollLeft + (structWrap.clientWidth / 2)) / prevStructW : 0.5;
+    const structCenterRatioY = structImage && structImage.clientHeight > 0 ? (structWrap.scrollTop + (structWrap.clientHeight / 2)) / structImage.clientHeight : 0.5;
     const zoom = Number(zoomInput && zoomInput.value ? zoomInput.value : 100);
     if (zoomLabel) zoomLabel.textContent = `${zoom}%`;
     if (clickImage.naturalWidth) {
@@ -218,6 +226,20 @@
     }
     renderControlPoints();
     renderStructurePoints();
+    window.requestAnimationFrame(() => {
+      const newClickW = clickImage.clientWidth || 0;
+      const newClickH = clickImage.clientHeight || 0;
+      if (newClickW > 0 && newClickH > 0) {
+        clickWrap.scrollLeft = Math.max(0, (newClickW * clickCenterRatioX) - (clickWrap.clientWidth / 2));
+        clickWrap.scrollTop = Math.max(0, (newClickH * clickCenterRatioY) - (clickWrap.clientHeight / 2));
+      }
+      const newStructW = structImage ? (structImage.clientWidth || 0) : 0;
+      const newStructH = structImage ? (structImage.clientHeight || 0) : 0;
+      if (newStructW > 0 && newStructH > 0) {
+        structWrap.scrollLeft = Math.max(0, (newStructW * structCenterRatioX) - (structWrap.clientWidth / 2));
+        structWrap.scrollTop = Math.max(0, (newStructH * structCenterRatioY) - (structWrap.clientHeight / 2));
+      }
+    });
   }
 
   function renderDots(layer, image, rows, typeKey, idKey) {
@@ -260,7 +282,7 @@
     pointList.innerHTML = `
       <table>
         <thead>
-          <tr><th>#</th><th>Type</th><th>ID</th><th>Pixel</th><th>Lat</th><th>Lon</th><th>Label</th></tr>
+          <tr><th>#</th><th>Type</th><th>ID</th><th>Pixel</th><th>Lat</th><th>Lon</th><th>Label</th><th></th></tr>
         </thead>
         <tbody>
           ${controlPoints.map((p, i) => `
@@ -272,11 +294,28 @@
               <td>${esc(p.lat)}</td>
               <td>${esc(p.lon)}</td>
               <td>${esc(p.label)}</td>
+              <td><button class="btn btn-secondary mapping-delete-control" data-index="${i}" type="button">Delete</button></td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     `;
+    pointList.querySelectorAll(".mapping-delete-control").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const idx = Number(btn.getAttribute("data-index"));
+        if (!Number.isInteger(idx) || idx < 0) return;
+        const yes = window.confirm(`Delete control point #${idx + 1}?`);
+        if (!yes) return;
+        const map_stem = stemInput ? stemInput.value.trim() : "";
+        const r = await api("mapping_delete_control_point", "POST", { map_stem, index: idx });
+        if (!r.ok) {
+          setMessage(r.error || "Could not delete control point.", false);
+          return;
+        }
+        setMessage(`Control point deleted. Remaining: ${r.remaining}`, true);
+        await refreshControlPoints();
+      });
+    });
   }
 
   function renderStructurePoints() {
@@ -443,12 +482,12 @@
     `).join("");
   }
 
-  async function runOperation(operation) {
+  async function runOperation(operation, extraBody) {
     const pdf_name = pdfSelect ? pdfSelect.value : "";
     const map_stem = stemInput ? stemInput.value.trim() : "";
     setMessage(`Running ${operation}...`, true);
     output.textContent = "";
-    const r = await api("mapping_run", "POST", { operation, pdf_name, map_stem });
+    const r = await api("mapping_run", "POST", { operation, pdf_name, map_stem, ...(extraBody || {}) });
     if (!r.ok) {
       setMessage(r.error || `Operation failed: ${operation}`, false);
       output.textContent = r.output || "";
@@ -459,6 +498,10 @@
     await refreshOutputs();
     if (operation === "convert_pdf" || operation === "init_inputs") {
       await refreshControlPoints();
+    }
+    if (operation === "rotate_pdf") {
+      await refreshPdfs();
+      clearMapClickViews();
     }
     if (operation === "georef_map" || operation === "build_structure_geojson") {
       await refreshStructurePoints();
@@ -599,6 +642,8 @@
   if (uploadBtn) uploadBtn.addEventListener("click", uploadPdf);
   if (initBtn) initBtn.addEventListener("click", () => runOperation("init_inputs"));
   if (convertBtn) convertBtn.addEventListener("click", () => runOperation("convert_pdf"));
+  if (rotateCcwBtn) rotateCcwBtn.addEventListener("click", () => runOperation("rotate_pdf", { degrees: -90 }));
+  if (rotateCwBtn) rotateCwBtn.addEventListener("click", () => runOperation("rotate_pdf", { degrees: 90 }));
   if (georefBtn) georefBtn.addEventListener("click", () => runOperation("georef_map"));
   if (structBtn) structBtn.addEventListener("click", () => runOperation("build_structure_geojson"));
   if (buildCollectionsBtn) buildCollectionsBtn.addEventListener("click", () => runOperation("build_asset_collections"));
