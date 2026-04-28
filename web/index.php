@@ -7,7 +7,7 @@ require __DIR__ . "/_bootstrap.php";
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ILS V3</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/style.css'); ?>">
 </head>
 <body>
   <header class="topbar">
@@ -53,3 +53,4 @@ require __DIR__ . "/_bootstrap.php";
   </main>
 </body>
 </html>
+

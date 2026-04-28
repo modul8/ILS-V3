@@ -65,7 +65,7 @@ $users = $pdo->query("SELECT id, username, role, active, created_at, updated_at 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ILS V3 - User Admin</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/style.css'); ?>">
 </head>
 <body>
   <header class="topbar">
@@ -132,3 +132,4 @@ $users = $pdo->query("SELECT id, username, role, active, created_at, updated_at 
   </main>
 </body>
 </html>
+

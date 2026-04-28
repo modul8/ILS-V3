@@ -12,7 +12,7 @@ if (($current_user["role"] ?? "") !== "admin") {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ILS V3 - Mapping Tools</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/style.css'); ?>">
 </head>
 <body>
   <header class="topbar">
@@ -171,6 +171,6 @@ if (($current_user["role"] ?? "") !== "admin") {
     </div>
   </div>
 
-  <script src="assets/mapping.js"></script>
+  <script src="assets/mapping.js?v=<?php echo (string)@filemtime(__DIR__ . '/assets/mapping.js'); ?>"></script>
 </body>
 </html>

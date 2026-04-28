@@ -67,7 +67,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $error === "") {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ILS V3 Login</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/style.css'); ?>">
 </head>
 <body class="login-body">
   <form class="login-card" method="post">
@@ -80,3 +80,4 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $error === "") {
   </form>
 </body>
 </html>
+

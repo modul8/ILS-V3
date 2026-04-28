@@ -23,7 +23,7 @@ $title = $title_map[$asset_type];
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ILS V3 - <?php echo htmlspecialchars($title, ENT_QUOTES, "UTF-8"); ?></title>
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/style.css'); ?>">
 </head>
 <body>
   <header class="topbar">
@@ -77,6 +77,6 @@ $title = $title_map[$asset_type];
       username: <?php echo json_encode($current_user["username"]); ?>
     };
   </script>
-  <script src="assets/app.js"></script>
+  <script src="assets/app.js?v=<?php echo (string)@filemtime(__DIR__ . '/assets/app.js'); ?>"></script>
 </body>
 </html>

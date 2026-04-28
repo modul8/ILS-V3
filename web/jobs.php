@@ -8,7 +8,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ILS V3 - Jobs</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/style.css?v=<?php echo (string)@filemtime(__DIR__ . '/assets/style.css'); ?>">
 </head>
 <body>
   <header class="topbar">
@@ -93,3 +93,4 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
   <script src="assets/jobs.js"></script>
 </body>
 </html>
+
