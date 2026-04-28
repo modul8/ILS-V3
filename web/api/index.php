@@ -75,6 +75,17 @@ function asset_with_relations(PDO $pdo, array $cfg, string $asset_type, string $
         ];
     }
 
+    $track_url = "";
+    $has_track = false;
+    if ($asset_type === "drain") {
+        $track_stmt = $pdo->prepare("SELECT 1 FROM asset_tracks WHERE asset_ref = :ref LIMIT 1");
+        $track_stmt->execute([":ref" => $asset["id"]]);
+        $has_track = (bool)$track_stmt->fetchColumn();
+        if ($has_track) {
+            $track_url = "api/index.php?action=download_asset_track&asset_type=drain&asset_id=" . rawurlencode((string)$asset["asset_id"]);
+        }
+    }
+
     return [
         "id" => (int)$asset["id"],
         "asset_type" => (string)$asset["asset_type"],
@@ -84,6 +95,8 @@ function asset_with_relations(PDO $pdo, array $cfg, string $asset_type, string $
         "lat" => $asset["lat"] !== null ? (string)$asset["lat"] : "",
         "lon" => $asset["lon"] !== null ? (string)$asset["lon"] : "",
         "updated_at" => (string)($asset["updated_at"] ?? ""),
+        "has_track" => $has_track,
+        "track_url" => $track_url,
         "contacts" => $contacts,
         "notes" => $notes,
         "photos" => $photos,
@@ -556,18 +569,54 @@ if ($action === "list_assets" && $method === "GET") {
         echo json_encode(["ok" => false, "error" => "missing_asset_type"]);
         exit;
     }
-    $sql = "SELECT asset_type, asset_id, work_order, purchase_order, lat, lon, updated_at
-            FROM assets
-            WHERE asset_type = :asset_type";
+    $sql = "SELECT a.asset_type, a.asset_id, a.work_order, a.purchase_order, a.lat, a.lon, a.updated_at";
+    if ($asset_type === "drain") {
+        $sql .= ", CASE WHEN t.asset_ref IS NULL THEN 0 ELSE 1 END AS has_track
+                 FROM assets a
+                 LEFT JOIN asset_tracks t ON t.asset_ref = a.id";
+    } else {
+        $sql .= ", 0 AS has_track
+                 FROM assets a";
+    }
+    $sql .= " WHERE a.asset_type = :asset_type";
     $params = [":asset_type" => $asset_type];
     if ($q !== "") {
-        $sql .= " AND (asset_id LIKE :q OR work_order LIKE :q OR purchase_order LIKE :q)";
+        $sql .= " AND (a.asset_id LIKE :q OR a.work_order LIKE :q OR a.purchase_order LIKE :q)";
         $params[":q"] = "%" . $q . "%";
     }
-    $sql .= " ORDER BY updated_at DESC LIMIT 200";
+    $sql .= " ORDER BY a.updated_at DESC LIMIT 200";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     echo json_encode(["ok" => true, "assets" => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    exit;
+}
+
+if ($action === "download_asset_track" && $method === "GET") {
+    $asset_type = clean_asset_type((string)($_GET["asset_type"] ?? ""));
+    $asset_id = trim((string)($_GET["asset_id"] ?? ""));
+    if ($asset_type !== "drain" || $asset_id === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_asset_type_or_id"]);
+        exit;
+    }
+    $asset = get_asset_row($pdo, "drain", $asset_id);
+    if (!$asset) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "not_found"]);
+        exit;
+    }
+    $stmt = $pdo->prepare("SELECT track_geojson FROM asset_tracks WHERE asset_ref = :ref LIMIT 1");
+    $stmt->execute([":ref" => $asset["id"]]);
+    $track_geojson = $stmt->fetchColumn();
+    if (!$track_geojson) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "track_not_found"]);
+        exit;
+    }
+    header_remove("Content-Type");
+    header("Content-Type: application/geo+json; charset=utf-8");
+    header("Content-Disposition: inline; filename=\"" . preg_replace('/[^A-Za-z0-9._-]/', '_', "drain_" . $asset_id . "_track.geojson") . "\"");
+    echo (string)$track_geojson;
     exit;
 }
 
@@ -1696,6 +1745,7 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
 
     $asset = get_asset_row($pdo, "drain", $drain_id);
     $asset_action = "none";
+    $pin_updated = false;
     if (!$asset) {
         $stmt = $pdo->prepare(
             "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
@@ -1708,6 +1758,7 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
         ]);
         $asset = get_asset_row($pdo, "drain", $drain_id);
         $asset_action = "created";
+        $pin_updated = true;
     }
     $asset_ref = (int)($asset["id"] ?? 0);
     if ($asset_ref <= 0) {
@@ -1738,16 +1789,21 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
         echo json_encode(["ok" => false, "error" => "asset_tracks_table_missing"]);
         exit;
     }
-    $stmt = $pdo->prepare(
-        "UPDATE assets
-         SET lat = :lat, lon = :lon
-         WHERE id = :id"
-    );
-    $stmt->execute([
-        ":lat" => $mid_lat,
-        ":lon" => $mid_lon,
-        ":id" => $asset_ref,
-    ]);
+    $existing_lat = $asset["lat"] !== null ? trim((string)$asset["lat"]) : "";
+    $existing_lon = $asset["lon"] !== null ? trim((string)$asset["lon"]) : "";
+    if ($existing_lat === "" || $existing_lon === "") {
+        $stmt = $pdo->prepare(
+            "UPDATE assets
+             SET lat = :lat, lon = :lon
+             WHERE id = :id"
+        );
+        $stmt->execute([
+            ":lat" => $mid_lat,
+            ":lon" => $mid_lon,
+            ":id" => $asset_ref,
+        ]);
+        $pin_updated = true;
+    }
 
     $dirs = mapping_dirs($cfg, true);
     $files = mapping_candidate_files($map_stem, $dirs);
@@ -1762,6 +1818,7 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
         "drain_id" => $drain_id,
         "lon" => $mid_lon,
         "lat" => $mid_lat,
+        "pin_updated" => $pin_updated,
         "point_count" => count($line_coords),
     ]);
     exit;

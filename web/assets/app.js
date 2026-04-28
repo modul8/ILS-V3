@@ -39,6 +39,12 @@
     return `<a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}">Open map pin</a>`;
   }
 
+  function trackLink(type, id, hasTrack, directUrl) {
+    if (type !== "drain" || !hasTrack) return "";
+    const href = directUrl || `api/index.php?action=download_asset_track&asset_type=drain&asset_id=${encodeURIComponent(id)}`;
+    return `<a class="link" target="_blank" rel="noopener" href="${esc(href)}">Open drain track</a>`;
+  }
+
   function contactRowHtml(c, i, readonly) {
     const dis = readonly ? "disabled" : "";
     const removeBtn = readonly
@@ -132,6 +138,7 @@
         <div class="line">
           ${isAdmin ? '<button class="btn btn-secondary" id="gpsBtn" type="button">Use Phone GPS</button>' : ""}
           <span id="mapLinkWrap">${mapLink(asset.lat, asset.lon)}</span>
+          <span id="trackLinkWrap">${trackLink(asset.asset_type, asset.asset_id, asset.has_track, asset.track_url)}</span>
         </div>
 
         <h3>Contacts ${isAdmin ? "" : "(read-only)"}</h3>
@@ -366,10 +373,11 @@
       assetList.innerHTML = `<div class="meta">No assets found.</div>`;
       return;
     }
+    const showTrack = assetType === "drain";
     assetList.innerHTML = `
       <table>
         <thead>
-          <tr><th>Asset ID</th><th>WO</th><th>PO</th><th>Pin</th><th>Updated</th></tr>
+          <tr><th>Asset ID</th><th>WO</th><th>PO</th><th>Pin</th>${showTrack ? "<th>Drain</th>" : ""}<th>Updated</th></tr>
         </thead>
         <tbody>
           ${rows.map((a) => `
@@ -378,6 +386,7 @@
               <td>${esc(a.work_order || "")}</td>
               <td>${esc(a.purchase_order || "")}</td>
               <td>${mapLink(a.lat, a.lon)}</td>
+              ${showTrack ? `<td>${trackLink(a.asset_type, a.asset_id, Number(a.has_track || 0) === 1, "")}</td>` : ""}
               <td>${esc(a.updated_at || "")}</td>
             </tr>
           `).join("")}
