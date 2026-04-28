@@ -35,6 +35,15 @@
   const structLayer = document.getElementById("mappingStructLayer");
   const structList = document.getElementById("mappingStructList");
   const structUpsertAsset = document.getElementById("mappingStructUpsertAsset");
+  const loadDrainTraceBtn = document.getElementById("mappingLoadDrainTraceBtn");
+  const drainTraceClearBtn = document.getElementById("mappingDrainTraceClearBtn");
+  const drainTraceSaveBtn = document.getElementById("mappingDrainTraceSaveBtn");
+  const drainTraceMeta = document.getElementById("mappingDrainTraceMeta");
+  const drainIdInput = document.getElementById("mappingDrainId");
+  const drainImage = document.getElementById("mappingDrainImage");
+  const drainWrap = document.getElementById("mappingDrainWrap");
+  const drainOverlay = document.getElementById("mappingDrainOverlay");
+  const drainPointLayer = document.getElementById("mappingDrainPointLayer");
   const pointModal = document.getElementById("mappingPointModal");
   const pointModalTitle = document.getElementById("mappingPointModalTitle");
   const pointType = document.getElementById("mappingPointType");
@@ -58,6 +67,11 @@
   let modalLookupSeq = 0;
   let controlCenteredOnce = false;
   let structureCenteredOnce = false;
+  let drainCenteredOnce = false;
+  let drainTraceStart = null;
+  let drainTraceEnd = null;
+  let drainTracePixels = [];
+  let drainTraceCoords = [];
 
   function esc(v) {
     return String(v || "")
@@ -102,6 +116,7 @@
     structurePoints = [];
     controlCenteredOnce = false;
     structureCenteredOnce = false;
+    drainCenteredOnce = false;
     if (clickImage) {
       clickImage.removeAttribute("src");
       clickImage.style.display = "none";
@@ -110,12 +125,23 @@
       structImage.removeAttribute("src");
       structImage.style.display = "none";
     }
+    if (drainImage) {
+      drainImage.removeAttribute("src");
+      drainImage.style.display = "none";
+    }
     if (pointLayer) pointLayer.innerHTML = "";
     if (structLayer) structLayer.innerHTML = "";
+    if (drainPointLayer) drainPointLayer.innerHTML = "";
+    if (drainOverlay) drainOverlay.innerHTML = "";
     if (clickMeta) clickMeta.textContent = "";
     if (structMeta) structMeta.textContent = "";
+    if (drainTraceMeta) drainTraceMeta.textContent = "";
     if (pointList) pointList.innerHTML = `<div class="meta">No control points loaded for current map.</div>`;
     if (structList) structList.innerHTML = `<div class="meta">No structure points loaded for current map.</div>`;
+    drainTraceStart = null;
+    drainTraceEnd = null;
+    drainTracePixels = [];
+    drainTraceCoords = [];
   }
 
   function openPointModal(mode, defaults) {
@@ -212,10 +238,13 @@
     if (!clickImage) return;
     const prevClickW = clickImage.clientWidth || 0;
     const prevStructW = structImage && structImage.clientWidth ? structImage.clientWidth : 0;
+    const prevDrainW = drainImage && drainImage.clientWidth ? drainImage.clientWidth : 0;
     const clickCenterRatioX = prevClickW > 0 ? (clickWrap.scrollLeft + (clickWrap.clientWidth / 2)) / prevClickW : 0.5;
     const clickCenterRatioY = clickImage.clientHeight > 0 ? (clickWrap.scrollTop + (clickWrap.clientHeight / 2)) / clickImage.clientHeight : 0.5;
     const structCenterRatioX = prevStructW > 0 ? (structWrap.scrollLeft + (structWrap.clientWidth / 2)) / prevStructW : 0.5;
     const structCenterRatioY = structImage && structImage.clientHeight > 0 ? (structWrap.scrollTop + (structWrap.clientHeight / 2)) / structImage.clientHeight : 0.5;
+    const drainCenterRatioX = prevDrainW > 0 ? (drainWrap.scrollLeft + (drainWrap.clientWidth / 2)) / prevDrainW : 0.5;
+    const drainCenterRatioY = drainImage && drainImage.clientHeight > 0 ? (drainWrap.scrollTop + (drainWrap.clientHeight / 2)) / drainImage.clientHeight : 0.5;
     const zoom = Number(zoomInput && zoomInput.value ? zoomInput.value : 100);
     if (zoomLabel) zoomLabel.textContent = `${zoom}%`;
     if (clickImage.naturalWidth) {
@@ -224,8 +253,12 @@
     if (structImage && structImage.naturalWidth) {
       structImage.style.width = `${Math.round(structImage.naturalWidth * (zoom / 100))}px`;
     }
+    if (drainImage && drainImage.naturalWidth) {
+      drainImage.style.width = `${Math.round(drainImage.naturalWidth * (zoom / 100))}px`;
+    }
     renderControlPoints();
     renderStructurePoints();
+    renderDrainTraceOverlay();
     window.requestAnimationFrame(() => {
       const newClickW = clickImage.clientWidth || 0;
       const newClickH = clickImage.clientHeight || 0;
@@ -238,6 +271,12 @@
       if (newStructW > 0 && newStructH > 0) {
         structWrap.scrollLeft = Math.max(0, (newStructW * structCenterRatioX) - (structWrap.clientWidth / 2));
         structWrap.scrollTop = Math.max(0, (newStructH * structCenterRatioY) - (structWrap.clientHeight / 2));
+      }
+      const newDrainW = drainImage ? (drainImage.clientWidth || 0) : 0;
+      const newDrainH = drainImage ? (drainImage.clientHeight || 0) : 0;
+      if (newDrainW > 0 && newDrainH > 0) {
+        drainWrap.scrollLeft = Math.max(0, (newDrainW * drainCenterRatioX) - (drainWrap.clientWidth / 2));
+        drainWrap.scrollTop = Math.max(0, (newDrainH * drainCenterRatioY) - (drainWrap.clientHeight / 2));
       }
     });
   }
@@ -270,6 +309,44 @@
       tag.textContent = `${t}${id ? ` ${id}` : ""}`;
       layer.appendChild(tag);
     });
+  }
+
+  function renderDrainTraceOverlay() {
+    if (!drainImage || !drainOverlay || !drainPointLayer) return;
+    drainOverlay.innerHTML = "";
+    drainPointLayer.innerHTML = "";
+    const displayW = drainImage.clientWidth || 0;
+    const displayH = drainImage.clientHeight || 0;
+    if (!displayW || !displayH || !drainImage.naturalWidth || !drainImage.naturalHeight) return;
+    const sx = displayW / drainImage.naturalWidth;
+    const sy = displayH / drainImage.naturalHeight;
+
+    const addMarker = (pt, color) => {
+      if (!pt) return;
+      const x = Number(pt[0]) * sx;
+      const y = Number(pt[1]) * sy;
+      const dot = document.createElement("div");
+      dot.className = "map-point";
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+      dot.style.background = color;
+      drainPointLayer.appendChild(dot);
+    };
+    addMarker(drainTraceStart, "#16a34a");
+    addMarker(drainTraceEnd, "#dc2626");
+
+    if (drainTracePixels.length >= 2) {
+      const pts = drainTracePixels.map((p) => `${(Number(p[0]) * sx).toFixed(1)},${(Number(p[1]) * sy).toFixed(1)}`).join(" ");
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      poly.setAttribute("points", pts);
+      poly.setAttribute("fill", "none");
+      poly.setAttribute("stroke", "#16a34a");
+      poly.setAttribute("stroke-width", "3");
+      poly.setAttribute("stroke-linejoin", "round");
+      poly.setAttribute("stroke-linecap", "round");
+      poly.setAttribute("opacity", "0.95");
+      drainOverlay.appendChild(poly);
+    }
   }
 
   function renderControlPoints() {
@@ -397,6 +474,41 @@
       };
       structImage.src = `${r.image_url}&_ts=${Date.now()}`;
     }
+  }
+
+  async function refreshDrainTraceMap() {
+    const map_stem = stemInput ? stemInput.value.trim() : "";
+    if (!map_stem) return;
+    const r = await api("mapping_get_trace_map", "GET", null, { map_stem });
+    if (!r.ok) {
+      setMessage(r.error || "Could not load drain trace map.", false);
+      return;
+    }
+    if (drainImage) {
+      drainImage.onload = () => {
+        drainImage.style.display = "block";
+        applyZoom();
+        renderDrainTraceOverlay();
+        if (!drainCenteredOnce) {
+          window.requestAnimationFrame(() => centerMapInWrap(drainWrap, drainImage));
+          drainCenteredOnce = true;
+        }
+        if (drainTraceMeta) {
+          const world = r.world_file_found ? "yes" : "no";
+          drainTraceMeta.textContent = `Image size: ${r.image_width} x ${r.image_height} | Georef world file: ${world}`;
+        }
+      };
+      drainImage.src = `${r.image_url}&_ts=${Date.now()}`;
+    }
+  }
+
+  function clearDrainTrace() {
+    drainTraceStart = null;
+    drainTraceEnd = null;
+    drainTracePixels = [];
+    drainTraceCoords = [];
+    renderDrainTraceOverlay();
+    if (drainTraceMeta) drainTraceMeta.textContent = "Trace cleared.";
   }
 
   async function refreshPdfs() {
@@ -605,9 +717,82 @@
     });
   }
 
+  if (drainImage) {
+    drainImage.addEventListener("click", async (ev) => {
+      if (!drainImage.naturalWidth || !drainImage.clientWidth) return;
+      const rect = drainImage.getBoundingClientRect();
+      const sx = drainImage.naturalWidth / rect.width;
+      const sy = drainImage.naturalHeight / rect.height;
+      const px = Math.round((ev.clientX - rect.left) * sx);
+      const py = Math.round((ev.clientY - rect.top) * sy);
+      if (!drainTraceStart) {
+        drainTraceStart = [px, py];
+        drainTraceEnd = null;
+        drainTracePixels = [];
+        drainTraceCoords = [];
+        renderDrainTraceOverlay();
+        if (drainTraceMeta) drainTraceMeta.textContent = `Start set: ${px}, ${py}. Click end point.`;
+        return;
+      }
+      drainTraceEnd = [px, py];
+      renderDrainTraceOverlay();
+      const map_stem = stemInput ? stemInput.value.trim() : "";
+      const r = await api("mapping_trace_drain", "POST", {
+        map_stem,
+        start_x: drainTraceStart[0],
+        start_y: drainTraceStart[1],
+        end_x: drainTraceEnd[0],
+        end_y: drainTraceEnd[1],
+      });
+      if (!r.ok) {
+        setMessage(r.error || "Drain trace failed.", false);
+        drainTracePixels = [];
+        drainTraceCoords = [];
+        renderDrainTraceOverlay();
+        return;
+      }
+      drainTracePixels = Array.isArray(r.pixel_points) ? r.pixel_points : [];
+      drainTraceCoords = Array.isArray(r.coord_points) ? r.coord_points : [];
+      if (Array.isArray(r.start_snap)) drainTraceStart = r.start_snap;
+      if (Array.isArray(r.end_snap)) drainTraceEnd = r.end_snap;
+      renderDrainTraceOverlay();
+      if (drainTraceMeta) drainTraceMeta.textContent = `Trace preview ready (${r.point_count || drainTracePixels.length} points).`;
+    });
+  }
+
   if (zoomInput) zoomInput.addEventListener("input", applyZoom);
   if (loadClickToolBtn) loadClickToolBtn.addEventListener("click", refreshControlPoints);
   if (loadStructToolBtn) loadStructToolBtn.addEventListener("click", refreshStructurePoints);
+  if (loadDrainTraceBtn) loadDrainTraceBtn.addEventListener("click", refreshDrainTraceMap);
+  if (drainTraceClearBtn) drainTraceClearBtn.addEventListener("click", clearDrainTrace);
+  if (drainTraceSaveBtn) {
+    drainTraceSaveBtn.addEventListener("click", async () => {
+      const map_stem = stemInput ? stemInput.value.trim() : "";
+      const drain_id = String(drainIdInput && drainIdInput.value ? drainIdInput.value : "").trim();
+      if (!map_stem) {
+        setMessage("Missing map stem.", false);
+        return;
+      }
+      if (!drain_id) {
+        setMessage("Drain ID is required.", false);
+        return;
+      }
+      if (!Array.isArray(drainTraceCoords) || drainTraceCoords.length < 2) {
+        setMessage("No drain trace to save. Click start and end first.", false);
+        return;
+      }
+      const yes = window.confirm(`Save traced line to drain ${drain_id}?`);
+      if (!yes) return;
+      const r = await api("mapping_save_drain_track", "POST", { map_stem, drain_id, coord_points: drainTraceCoords });
+      if (!r.ok) {
+        setMessage(r.error || "Could not save drain track.", false);
+        return;
+      }
+      setMessage(`Drain track saved for ${drain_id}${r.asset_action === "created" ? " (asset created)" : ""}.`, true);
+      await refreshOutputs();
+      clearDrainTrace();
+    });
+  }
   if (pointCancelBtn) pointCancelBtn.addEventListener("click", () => closePointModal(null));
   if (pointSaveBtn) {
     pointSaveBtn.addEventListener("click", () => {

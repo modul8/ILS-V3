@@ -192,6 +192,25 @@ function run_mapping_cmd(array $cfg, array $parts): array {
     ];
 }
 
+function run_mapping_cmd_json(array $cfg, array $parts): array {
+    $run = run_mapping_cmd($cfg, $parts);
+    $txt = trim((string)($run["output"] ?? ""));
+    $data = json_decode($txt, true);
+    if (is_array($data)) {
+        $data["exit_code"] = (int)($run["exit_code"] ?? 1);
+        $data["command"] = (string)($run["command"] ?? "");
+        $data["output"] = (string)($run["output"] ?? "");
+        return $data;
+    }
+    return [
+        "ok" => false,
+        "error" => "invalid_json_from_command",
+        "exit_code" => (int)($run["exit_code"] ?? 1),
+        "command" => (string)($run["command"] ?? ""),
+        "output" => (string)($run["output"] ?? ""),
+    ];
+}
+
 function mapping_dirs(array $cfg, bool $ensure = false): array {
     $root = mapping_root($cfg);
     $input_dir = path_join($root, "input_pdfs");
@@ -227,6 +246,7 @@ function mapping_candidate_files(string $map_stem, array $dirs): array {
         "structure_csv_qgis" => path_join($input_dir, $map_stem . "_structure_truth_qgis.csv"),
         "structure_georef_csv" => path_join($input_dir, $map_stem . "_structure_truth_georef.csv"),
         "structure_geojson" => path_join($input_dir, $map_stem . "_structure_truth_georef.geojson"),
+        "drain_tracks_geojson" => path_join($input_dir, $map_stem . "_drain_tracks.geojson"),
         "image_png" => $png,
         "image_world" => preg_replace('/\.png$/i', ".pgw", $png),
         "image_prj" => preg_replace('/\.png$/i', ".prj", $png),
@@ -351,6 +371,49 @@ function mapping_write_qgis_safe_csv(string $source_csv, string $target_csv, arr
 
 function mapping_structure_fields(): array {
     return ["structure_id", "structure_type", "pixel_x", "pixel_y", "lon", "lat"];
+}
+
+function mapping_upsert_drain_track_geojson(string $geojson_path, string $asset_id, string $map_stem, array $coords_lon_lat): void {
+    $feature = [
+        "type" => "Feature",
+        "geometry" => [
+            "type" => "LineString",
+            "coordinates" => $coords_lon_lat,
+        ],
+        "properties" => [
+            "asset_type" => "drain",
+            "asset_id" => $asset_id,
+            "map_stem" => $map_stem,
+        ],
+    ];
+
+    $collection = [
+        "type" => "FeatureCollection",
+        "name" => basename($geojson_path, ".geojson"),
+        "crs" => ["type" => "name", "properties" => ["name" => "EPSG:4326"]],
+        "features" => [],
+    ];
+    if (file_exists($geojson_path) && filesize($geojson_path) > 0) {
+        $existing_raw = file_get_contents($geojson_path);
+        $existing = json_decode((string)$existing_raw, true);
+        if (is_array($existing) && isset($existing["features"]) && is_array($existing["features"])) {
+            $collection = $existing;
+        }
+    }
+    $features = [];
+    foreach (($collection["features"] ?? []) as $f) {
+        if (!is_array($f)) continue;
+        $props = is_array($f["properties"] ?? null) ? $f["properties"] : [];
+        $t = strtolower(trim((string)($props["asset_type"] ?? "")));
+        $id = trim((string)($props["asset_id"] ?? ""));
+        if ($t === "drain" && $id === $asset_id) {
+            continue;
+        }
+        $features[] = $f;
+    }
+    $features[] = $feature;
+    $collection["features"] = array_values($features);
+    file_put_contents($geojson_path, json_encode($collection, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
 function ensure_structure_csv_header(string $csv_path): void {
@@ -1498,6 +1561,189 @@ if ($action === "mapping_add_structure_point" && $method === "POST") {
             "lon" => $lon,
             "lat" => $lat,
         ],
+    ]);
+    exit;
+}
+
+if ($action === "mapping_get_trace_map" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $map_stem = trim((string)($_GET["map_stem"] ?? ""));
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $image = (string)($files["image_png"] ?? "");
+    if ($image === "" || !file_exists($image)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "image_png_missing"]);
+        exit;
+    }
+    $dims = @getimagesize($image);
+    $affine = mapping_load_world_affine($image);
+    echo json_encode([
+        "ok" => true,
+        "image_url" => "api/index.php?action=mapping_download_output&map_stem=" . rawurlencode($map_stem) . "&file_key=image_png",
+        "image_width" => is_array($dims) ? (int)($dims[0] ?? 0) : 0,
+        "image_height" => is_array($dims) ? (int)($dims[1] ?? 0) : 0,
+        "world_file_found" => $affine !== null,
+    ]);
+    exit;
+}
+
+if ($action === "mapping_trace_drain" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $b = body_json();
+    $map_stem = trim((string)($b["map_stem"] ?? ""));
+    $sx = (int)($b["start_x"] ?? 0);
+    $sy = (int)($b["start_y"] ?? 0);
+    $ex = (int)($b["end_x"] ?? 0);
+    $ey = (int)($b["end_y"] ?? 0);
+    if ($map_stem === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem"]);
+        exit;
+    }
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $image = (string)($files["image_png"] ?? "");
+    $world = (string)($files["image_world"] ?? "");
+    if ($image === "" || !file_exists($image) || $world === "" || !file_exists($world)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_image_or_world"]);
+        exit;
+    }
+    $cmd_parts = [
+        path_join((string)$dirs["scripts_dir"], "trace_drain_path.py"),
+        $image,
+        "--start-x",
+        (string)$sx,
+        "--start-y",
+        (string)$sy,
+        "--end-x",
+        (string)$ex,
+        "--end-y",
+        (string)$ey,
+    ];
+    $res = run_mapping_cmd_json($cfg, $cmd_parts);
+    if (!($res["ok"] ?? false)) {
+        http_response_code(400);
+    }
+    echo json_encode($res);
+    exit;
+}
+
+if ($action === "mapping_save_drain_track" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!mapping_enabled($cfg)) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "mapping_disabled"]);
+        exit;
+    }
+    $b = body_json();
+    $map_stem = trim((string)($b["map_stem"] ?? ""));
+    $drain_id = trim((string)($b["drain_id"] ?? ""));
+    $coords = $b["coord_points"] ?? null;
+    if ($map_stem === "" || $drain_id === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_map_stem_or_drain_id"]);
+        exit;
+    }
+    if (!is_array($coords) || count($coords) < 2) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_coord_points"]);
+        exit;
+    }
+    $line_coords = [];
+    foreach ($coords as $pt) {
+        if (!is_array($pt) || count($pt) < 2) continue;
+        $lon = (float)$pt[0];
+        $lat = (float)$pt[1];
+        $line_coords[] = [(float)number_format($lon, 6, ".", ""), (float)number_format($lat, 6, ".", "")];
+    }
+    if (count($line_coords) < 2) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_coord_points"]);
+        exit;
+    }
+
+    $asset = get_asset_row($pdo, "drain", $drain_id);
+    $asset_action = "none";
+    if (!$asset) {
+        $stmt = $pdo->prepare(
+            "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
+             VALUES ('drain', :asset_id, '', '', NULL, NULL, '')"
+        );
+        $stmt->execute([":asset_id" => $drain_id]);
+        $asset = get_asset_row($pdo, "drain", $drain_id);
+        $asset_action = "created";
+    }
+    $asset_ref = (int)($asset["id"] ?? 0);
+    if ($asset_ref <= 0) {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "asset_lookup_failed"]);
+        exit;
+    }
+
+    $track_geojson = json_encode([
+        "type" => "Feature",
+        "geometry" => ["type" => "LineString", "coordinates" => $line_coords],
+        "properties" => ["asset_type" => "drain", "asset_id" => $drain_id, "map_stem" => $map_stem],
+    ], JSON_UNESCAPED_SLASHES);
+
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO asset_tracks (asset_ref, map_stem, track_geojson)
+             VALUES (:asset_ref, :map_stem, :track_geojson)
+             ON DUPLICATE KEY UPDATE map_stem = VALUES(map_stem), track_geojson = VALUES(track_geojson)"
+        );
+        $stmt->execute([
+            ":asset_ref" => $asset_ref,
+            ":map_stem" => $map_stem,
+            ":track_geojson" => $track_geojson,
+        ]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "asset_tracks_table_missing"]);
+        exit;
+    }
+
+    $dirs = mapping_dirs($cfg, true);
+    $files = mapping_candidate_files($map_stem, $dirs);
+    $tracks_geojson = (string)($files["drain_tracks_geojson"] ?? "");
+    if ($tracks_geojson !== "") {
+        mapping_upsert_drain_track_geojson($tracks_geojson, $drain_id, $map_stem, $line_coords);
+    }
+
+    echo json_encode([
+        "ok" => true,
+        "asset_action" => $asset_action,
+        "drain_id" => $drain_id,
+        "point_count" => count($line_coords),
     ]);
     exit;
 }

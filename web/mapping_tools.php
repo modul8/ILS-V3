@@ -112,6 +112,29 @@ if (($current_user["role"] ?? "") !== "admin") {
         <button class="btn btn-secondary" id="mappingCollectionsRefreshBtn" type="button">Refresh Collection Files</button>
       </div>
       <div id="mappingCollectionsFiles" class="photo-list"></div>
+      <hr>
+      <h2>8) Trace Drain Track (From Georeferenced Map)</h2>
+      <p class="meta">Click start then end on a red drain line. Confirm preview and save to a drain asset.</p>
+      <div class="line">
+        <button class="btn" id="mappingLoadDrainTraceBtn" type="button">Load Drain Trace Tool</button>
+        <button class="btn btn-secondary" id="mappingDrainTraceClearBtn" type="button">Clear Trace</button>
+      </div>
+      <div class="grid">
+        <label>Drain ID
+          <input id="mappingDrainId" placeholder="e.g. MAYFIELDS_01">
+        </label>
+      </div>
+      <div id="mappingDrainTraceMeta" class="meta"></div>
+      <div id="mappingDrainWrap" class="map-click-wrap">
+        <div id="mappingDrainStage" class="map-image-stage">
+          <img id="mappingDrainImage" alt="Map PNG for drain tracing">
+          <svg id="mappingDrainOverlay" class="map-svg-overlay"></svg>
+          <div id="mappingDrainPointLayer" class="map-point-layer"></div>
+        </div>
+      </div>
+      <div class="line">
+        <button class="btn" id="mappingDrainTraceSaveBtn" type="button">Save Drain Track</button>
+      </div>
       <div id="mappingMsg"></div>
       <pre id="mappingOutput" class="log-box"></pre>
     </section>

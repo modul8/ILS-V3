@@ -98,3 +98,17 @@ CREATE TABLE IF NOT EXISTS jobs (
     FOREIGN KEY (asset_ref) REFERENCES assets(id)
     ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS asset_tracks (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  asset_ref INT NOT NULL,
+  map_stem VARCHAR(255) DEFAULT NULL,
+  track_geojson LONGTEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_asset_tracks_asset_ref (asset_ref),
+  KEY idx_asset_tracks_ref (asset_ref),
+  CONSTRAINT fk_asset_tracks_asset
+    FOREIGN KEY (asset_ref) REFERENCES assets(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
