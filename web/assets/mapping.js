@@ -745,7 +745,9 @@
         end_y: drainTraceEnd[1],
       });
       if (!r.ok) {
-        setMessage(r.error || "Drain trace failed.", false);
+        const err = r.error || "Drain trace failed.";
+        setMessage(err, false);
+        if (drainTraceMeta) drainTraceMeta.textContent = `Trace failed: ${err}. Try points closer to the same red line.`;
         drainTracePixels = [];
         drainTraceCoords = [];
         renderDrainTraceOverlay();
@@ -756,7 +758,11 @@
       if (Array.isArray(r.start_snap)) drainTraceStart = r.start_snap;
       if (Array.isArray(r.end_snap)) drainTraceEnd = r.end_snap;
       renderDrainTraceOverlay();
-      if (drainTraceMeta) drainTraceMeta.textContent = `Trace preview ready (${r.point_count || drainTracePixels.length} points).`;
+      if (drainTraceMeta) {
+        const bridge = Number(r.gap_bridge_px || 0);
+        const bridgeTxt = bridge > 0 ? ` | gap bridge: ${bridge}px` : "";
+        drainTraceMeta.textContent = `Trace preview ready (${r.point_count || drainTracePixels.length} points)${bridgeTxt}.`;
+      }
     });
   }
 

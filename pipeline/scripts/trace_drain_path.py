@@ -124,6 +124,28 @@ def bfs_path(mask: np.ndarray, start: tuple[int, int], end: tuple[int, int]) -> 
     return path
 
 
+def path_with_gap_bridge(
+    mask: np.ndarray,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    max_dilate_steps: int = 4,
+) -> tuple[list[tuple[int, int]], int]:
+    try:
+        return bfs_path(mask, start, end), 0
+    except ValueError:
+        pass
+
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    work = mask.copy()
+    for step in range(1, max_dilate_steps + 1):
+        work = cv2.dilate(work, kernel, iterations=1)
+        try:
+            return bfs_path(work, start, end), step
+        except ValueError:
+            continue
+    raise ValueError("No connected red drain path found between selected points.")
+
+
 def simplify_polyline(path: list[tuple[int, int]], epsilon: float = 1.5) -> list[tuple[int, int]]:
     if len(path) <= 2:
         return path
@@ -144,7 +166,7 @@ def trace_drain(image_path: Path, start_x: int, start_y: int, end_x: int, end_y:
     mask = red_mask(image)
     start = snap_to_mask(mask, start_x, start_y)
     end = snap_to_mask(mask, end_x, end_y)
-    path = bfs_path(mask, start, end)
+    path, dilate_steps_used = path_with_gap_bridge(mask, start, end)
     simple = simplify_polyline(path)
     affine = load_world_affine(image_path)
 
@@ -160,6 +182,7 @@ def trace_drain(image_path: Path, start_x: int, start_y: int, end_x: int, end_y:
         "pixel_points": [[x, y] for x, y in simple],
         "coord_points": coord_points,
         "point_count": len(simple),
+        "gap_bridge_px": int(dilate_steps_used),
     }
 
 
@@ -188,4 +211,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
