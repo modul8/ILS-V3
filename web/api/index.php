@@ -1690,15 +1690,22 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
         echo json_encode(["ok" => false, "error" => "invalid_coord_points"]);
         exit;
     }
+    $mid_idx = (int)floor((count($line_coords) - 1) / 2);
+    $mid_lon = (string)$line_coords[$mid_idx][0];
+    $mid_lat = (string)$line_coords[$mid_idx][1];
 
     $asset = get_asset_row($pdo, "drain", $drain_id);
     $asset_action = "none";
     if (!$asset) {
         $stmt = $pdo->prepare(
             "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
-             VALUES ('drain', :asset_id, '', '', NULL, NULL, '')"
+             VALUES ('drain', :asset_id, '', '', :lat, :lon, '')"
         );
-        $stmt->execute([":asset_id" => $drain_id]);
+        $stmt->execute([
+            ":asset_id" => $drain_id,
+            ":lat" => $mid_lat,
+            ":lon" => $mid_lon,
+        ]);
         $asset = get_asset_row($pdo, "drain", $drain_id);
         $asset_action = "created";
     }
@@ -1731,6 +1738,16 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
         echo json_encode(["ok" => false, "error" => "asset_tracks_table_missing"]);
         exit;
     }
+    $stmt = $pdo->prepare(
+        "UPDATE assets
+         SET lat = :lat, lon = :lon
+         WHERE id = :id"
+    );
+    $stmt->execute([
+        ":lat" => $mid_lat,
+        ":lon" => $mid_lon,
+        ":id" => $asset_ref,
+    ]);
 
     $dirs = mapping_dirs($cfg, true);
     $files = mapping_candidate_files($map_stem, $dirs);
@@ -1743,6 +1760,8 @@ if ($action === "mapping_save_drain_track" && $method === "POST") {
         "ok" => true,
         "asset_action" => $asset_action,
         "drain_id" => $drain_id,
+        "lon" => $mid_lon,
+        "lat" => $mid_lat,
         "point_count" => count($line_coords),
     ]);
     exit;
