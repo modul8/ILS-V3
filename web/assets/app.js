@@ -41,7 +41,7 @@
 
   function trackLink(type, id, hasTrack, directUrl) {
     if (type !== "drain" || !hasTrack) return "";
-    const href = directUrl || `api/index.php?action=download_asset_track&asset_type=drain&asset_id=${encodeURIComponent(id)}`;
+    const href = `drain_track.php?asset_type=drain&asset_id=${encodeURIComponent(id)}`;
     return `<a class="link" target="_blank" rel="noopener" href="${esc(href)}">Open drain track</a>`;
   }
 
