@@ -234,9 +234,26 @@ function run_python_json(array $cfg, array $parts): array {
     exec($cmd, $output, $code);
     $txt = trim(implode("\n", $output));
     $data = json_decode($txt, true);
+    if (!is_array($data) && $txt !== "") {
+        // Accept a JSON object on the last line when Python emits warnings/noise before it.
+        $lines = preg_split("/\r\n|\n|\r/", $txt);
+        if (is_array($lines)) {
+            for ($i = count($lines) - 1; $i >= 0; $i--) {
+                $line = trim((string)$lines[$i]);
+                if ($line === "") continue;
+                if ($line[0] !== "{") continue;
+                $try = json_decode($line, true);
+                if (is_array($try)) {
+                    $data = $try;
+                    break;
+                }
+            }
+        }
+    }
     if (is_array($data)) {
         $data["exit_code"] = $code;
         $data["command"] = $cmd;
+        $data["raw_output"] = $txt;
         return $data;
     }
     return [
