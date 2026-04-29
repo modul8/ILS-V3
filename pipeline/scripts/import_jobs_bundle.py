@@ -71,6 +71,13 @@ def strip_segment_suffix(name: str) -> str:
     return s.strip()
 
 
+def canonical_drain_asset_id(name: str) -> str:
+    s = strip_segment_suffix(name)
+    s = re.sub(r"^\s*drain\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def find_header_row(ws, max_scan: int = 120) -> int | None:
     max_row = min(ws.max_row, max_scan)
     max_col = min(ws.max_column, 80)
@@ -152,6 +159,7 @@ def parse_drain_job_workbooks(job_paths: list[Path], wo_map: dict[str, dict[str,
                 qty_km = (total_m if total_m is not None else max(0.0, end_m - start_m)) / 1000.0
                 item = f"{name} ({int(start_m)}-{int(end_m)})"
                 base = strip_segment_suffix(name)
+                asset_id = canonical_drain_asset_id(name)
                 grp = first_token(base)
                 wo = ""
                 po = ""
@@ -167,12 +175,12 @@ def parse_drain_job_workbooks(job_paths: list[Path], wo_map: dict[str, dict[str,
                         "job_key": job_key,
                         "module": "drain",
                         "asset_type": "drain",
-                        "asset_id": item,
+                        "asset_id": asset_id,
                         "work_order": wo,
                         "purchase_order": po,
                         "status": "pending",
                         "scheduled_date": "",
-                        "description": f"{ws.title} / {catchment}".strip(" /"),
+                        "description": f"{item} / {ws.title} / {catchment}".strip(" /"),
                         "meta": {
                             "source": fp.name,
                             "sheet": ws.title,
@@ -302,4 +310,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
