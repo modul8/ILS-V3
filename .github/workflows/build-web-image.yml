@@ -6,6 +6,8 @@ on:
     tags: ["v*.*.*"]
     paths:
       - "docker/php-apache-python/**"
+      - "pipeline/requirements.txt"
+      - "pipeline/scripts/**"
       - ".github/workflows/build-web-image.yml"
   workflow_dispatch:
 
@@ -47,4 +49,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
