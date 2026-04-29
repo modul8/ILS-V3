@@ -37,7 +37,14 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
       <p>Import work lists and map jobs to asset coordinates.</p>
       <div class="grid">
         <label>Module
-          <input id="jobsModule" placeholder="work">
+          <select id="jobsModule">
+            <option value="">All</option>
+            <option value="work">work</option>
+            <option value="drain">drain</option>
+            <option value="weeds">weeds</option>
+            <option value="fire">fire</option>
+            <option value="tracks">tracks</option>
+          </select>
         </label>
         <label>Status
           <select id="jobsStatus">
