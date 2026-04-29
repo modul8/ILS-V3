@@ -1063,10 +1063,13 @@ if ($action === "import_jobs_xlsx_bundle" && $method === "POST") {
     $parsed = run_python_json($cfg, $cmd_parts);
     if (!($parsed["ok"] ?? false)) {
         http_response_code(400);
+        $detail = trim((string)($parsed["output"] ?? ""));
+        if ($detail === "") $detail = trim((string)($parsed["raw_output"] ?? ""));
+        if ($detail === "") $detail = trim((string)($parsed["error"] ?? "unknown"));
         echo json_encode([
             "ok" => false,
             "error" => "xlsx_parse_failed",
-            "detail" => $parsed["error"] ?? ($parsed["output"] ?? "unknown"),
+            "detail" => $detail,
         ]);
         exit;
     }
