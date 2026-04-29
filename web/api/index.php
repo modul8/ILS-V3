@@ -854,16 +854,19 @@ if ($action === "upload_photo" && $method === "POST") {
 }
 
 if ($action === "list_jobs" && $method === "GET") {
-    $module = clean_job_module((string)($_GET["module"] ?? ""));
+    $module_raw = trim((string)($_GET["module"] ?? ""));
     $status = trim((string)($_GET["status"] ?? ""));
     $asset_type = clean_asset_type((string)($_GET["asset_type"] ?? ""));
+    $current_work = trim((string)($_GET["current_work"] ?? ""));
+    $invoice_ready = trim((string)($_GET["invoice_ready"] ?? ""));
     $q = trim((string)($_GET["q"] ?? ""));
     $limit = (int)($_GET["limit"] ?? 300);
     if ($limit <= 0 || $limit > 2000) $limit = 300;
 
     $where = [];
     $params = [];
-    if ($module !== "" && $module !== "all") {
+    if ($module_raw !== "" && strtolower($module_raw) !== "all") {
+        $module = clean_job_module($module_raw);
         $where[] = "j.module = :module";
         $params[":module"] = $module;
     }
@@ -875,6 +878,14 @@ if ($action === "list_jobs" && $method === "GET") {
         $where[] = "j.asset_type = :asset_type";
         $params[":asset_type"] = $asset_type;
     }
+    if ($current_work === "1") {
+        $where[] = "j.in_current_work = 1";
+    } elseif ($current_work === "0") {
+        $where[] = "j.in_current_work = 0";
+    }
+    if ($invoice_ready === "1") {
+        $where[] = "j.completed_at IS NOT NULL AND j.invoiced_at IS NULL";
+    }
     if ($q !== "") {
         $where[] = "(j.work_order LIKE :q OR j.purchase_order LIKE :q OR j.asset_id LIKE :q OR j.description LIKE :q)";
         $params[":q"] = "%" . $q . "%";
@@ -883,7 +894,7 @@ if ($action === "list_jobs" && $method === "GET") {
     $sql = "SELECT
               j.id, j.job_key, j.module, j.asset_type, j.asset_id, j.asset_ref,
               j.work_order, j.purchase_order, j.status, j.scheduled_date, j.description,
-              j.lat, j.lon, j.updated_at,
+              j.lat, j.lon, j.updated_at, j.in_current_work, j.completed_at, j.invoiced_at,
               a.asset_id AS matched_asset_id, a.updated_at AS asset_updated_at
             FROM jobs j
             LEFT JOIN assets a ON a.id = j.asset_ref";
@@ -893,6 +904,65 @@ if ($action === "list_jobs" && $method === "GET") {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     echo json_encode(["ok" => true, "jobs" => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+    exit;
+}
+
+if ($action === "update_jobs_flags" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    $b = body_json();
+    $ids = $b["ids"] ?? [];
+    if (!is_array($ids) || !$ids) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_ids"]);
+        exit;
+    }
+    $ids = array_values(array_unique(array_map("intval", $ids)));
+    $ids = array_values(array_filter($ids, fn($v) => $v > 0));
+    if (!$ids) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "no_valid_ids"]);
+        exit;
+    }
+
+    $set = [];
+    $params = [];
+    if (array_key_exists("in_current_work", $b)) {
+        $set[] = "in_current_work = :in_current_work";
+        $params[":in_current_work"] = ((int)$b["in_current_work"]) ? 1 : 0;
+    }
+    if (array_key_exists("mark_completed", $b) && (int)$b["mark_completed"] === 1) {
+        $set[] = "status = 'completed'";
+        $set[] = "completed_at = CURRENT_TIMESTAMP";
+    }
+    if (array_key_exists("mark_invoiced", $b) && (int)$b["mark_invoiced"] === 1) {
+        $set[] = "invoiced_at = CURRENT_TIMESTAMP";
+    }
+    if (array_key_exists("clear_invoiced", $b) && (int)$b["clear_invoiced"] === 1) {
+        $set[] = "invoiced_at = NULL";
+    }
+    if (array_key_exists("clear_completed", $b) && (int)$b["clear_completed"] === 1) {
+        $set[] = "completed_at = NULL";
+    }
+    if (!$set) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "nothing_to_update"]);
+        exit;
+    }
+
+    $in = [];
+    foreach ($ids as $i => $id) {
+        $k = ":id_" . $i;
+        $in[] = $k;
+        $params[$k] = $id;
+    }
+    $sql = "UPDATE jobs SET " . implode(", ", $set) . " WHERE id IN (" . implode(",", $in) . ")";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    echo json_encode(["ok" => true, "updated" => $stmt->rowCount()]);
     exit;
 }
 
@@ -1133,6 +1203,21 @@ if ($action === "import_jobs_xlsx_bundle" && $method === "POST") {
         $meta["import_source"] = "xlsx_bundle";
         if ($asset_type !== "" && $asset_id !== "") {
             $asset = get_asset_row($pdo, $asset_type, $asset_id);
+            if (!$asset) {
+                $ins = $pdo->prepare(
+                    "INSERT INTO assets (asset_type, asset_id, work_order, purchase_order, lat, lon, notes)
+                     VALUES (:asset_type, :asset_id, '', '', NULL, NULL, '')"
+                );
+                try {
+                    $ins->execute([
+                        ":asset_type" => $asset_type,
+                        ":asset_id" => $asset_id,
+                    ]);
+                } catch (Throwable $e) {
+                    // Ignore duplicate race, try lookup again.
+                }
+                $asset = get_asset_row($pdo, $asset_type, $asset_id);
+            }
             if ($asset) {
                 $asset_ref = (int)$asset["id"];
                 $lat = $asset["lat"] !== null ? $asset["lat"] : null;

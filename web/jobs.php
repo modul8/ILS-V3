@@ -65,6 +65,19 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
             <option value="floodgate">Floodgate</option>
           </select>
         </label>
+        <label>Current Work
+          <select id="jobsCurrentWork">
+            <option value="">All</option>
+            <option value="1">In Current Work</option>
+            <option value="0">Not In Current Work</option>
+          </select>
+        </label>
+        <label>Invoice Ready
+          <select id="jobsInvoiceReady">
+            <option value="">All</option>
+            <option value="1">Completed Not Invoiced</option>
+          </select>
+        </label>
         <label>Search
           <input id="jobsSearch" placeholder="WO / PO / Asset / Description">
         </label>
@@ -104,6 +117,18 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
 
     <section class="card">
       <h2>Job List</h2>
+      <?php if ($is_admin): ?>
+      <div class="line">
+        <button class="btn btn-secondary" id="jobsSelectAllBtn" type="button">Select All Visible</button>
+        <button class="btn btn-secondary" id="jobsClearSelectionBtn" type="button">Clear Selection</button>
+        <button class="btn" id="jobsAddCurrentBtn" type="button">Add to Current Work</button>
+        <button class="btn btn-secondary" id="jobsRemoveCurrentBtn" type="button">Remove from Current Work</button>
+        <button class="btn" id="jobsMarkCompletedBtn" type="button">Mark Completed</button>
+        <button class="btn" id="jobsMarkInvoicedBtn" type="button">Mark Invoiced</button>
+        <button class="btn" id="jobsInvoiceAsCompletedBtn" type="button">Invoice as Completed</button>
+      </div>
+      <div id="jobsActionMsg"></div>
+      <?php endif; ?>
       <div id="jobsTableWrap" class="list-table-wrap"></div>
     </section>
   </main>

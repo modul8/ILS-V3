@@ -5,9 +5,19 @@
   const moduleInput = document.getElementById("jobsModule");
   const statusInput = document.getElementById("jobsStatus");
   const assetTypeInput = document.getElementById("jobsAssetType");
+  const currentWorkInput = document.getElementById("jobsCurrentWork");
+  const invoiceReadyInput = document.getElementById("jobsInvoiceReady");
   const searchInput = document.getElementById("jobsSearch");
   const refreshBtn = document.getElementById("jobsRefreshBtn");
   const tableWrap = document.getElementById("jobsTableWrap");
+  const actionMsg = document.getElementById("jobsActionMsg");
+  const selectAllBtn = document.getElementById("jobsSelectAllBtn");
+  const clearSelBtn = document.getElementById("jobsClearSelectionBtn");
+  const addCurrentBtn = document.getElementById("jobsAddCurrentBtn");
+  const removeCurrentBtn = document.getElementById("jobsRemoveCurrentBtn");
+  const markCompletedBtn = document.getElementById("jobsMarkCompletedBtn");
+  const markInvoicedBtn = document.getElementById("jobsMarkInvoicedBtn");
+  const invoiceAsCompletedBtn = document.getElementById("jobsInvoiceAsCompletedBtn");
   const importBtn = document.getElementById("jobsImportBtn");
   const importFile = document.getElementById("jobsCsvFile");
   const importMsg = document.getElementById("jobsImportMsg");
@@ -45,11 +55,43 @@
     return res.json();
   }
 
+  function selectedJobIds() {
+    return Array.from(document.querySelectorAll(".job-select:checked"))
+      .map((el) => Number(el.value))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  }
+
+  async function updateFlags(payload, okMsg) {
+    const ids = selectedJobIds();
+    if (!ids.length) {
+      if (actionMsg) {
+        actionMsg.className = "error";
+        actionMsg.textContent = "Select one or more jobs first.";
+      }
+      return;
+    }
+    const r = await api("update_jobs_flags", "POST", { ids, ...payload });
+    if (!r.ok) {
+      if (actionMsg) {
+        actionMsg.className = "error";
+        actionMsg.textContent = r.error || "Update failed.";
+      }
+      return;
+    }
+    if (actionMsg) {
+      actionMsg.className = "success";
+      actionMsg.textContent = `${okMsg} (${r.updated || 0} jobs)`;
+    }
+    await loadJobs();
+  }
+
   async function loadJobs() {
     const params = {
       module: moduleInput.value.trim(),
       status: statusInput.value,
       asset_type: assetTypeInput.value,
+      current_work: currentWorkInput ? currentWorkInput.value : "",
+      invoice_ready: invoiceReadyInput ? invoiceReadyInput.value : "",
       q: searchInput.value.trim(),
       limit: "1000",
     };
@@ -67,12 +109,16 @@
       <table>
         <thead>
           <tr>
+            ${isAdmin ? "<th></th>" : ""}
             <th>Module</th>
             <th>Asset</th>
             <th>WO</th>
             <th>PO</th>
             <th>Status</th>
             <th>Pin</th>
+            <th>Current</th>
+            <th>Completed</th>
+            <th>Invoiced</th>
             <th>Match</th>
             <th>Updated</th>
           </tr>
@@ -80,12 +126,16 @@
         <tbody>
           ${rows.map((j) => `
             <tr>
+              ${isAdmin ? `<td><input class="job-select" type="checkbox" value="${Number(j.id) || 0}"></td>` : ""}
               <td>${esc(j.module)}</td>
               <td>${esc(j.asset_type || "")} ${esc(j.asset_id || "")}</td>
               <td>${esc(j.work_order || "")}</td>
               <td>${esc(j.purchase_order || "")}</td>
               <td>${esc(j.status || "")}</td>
               <td>${mapLink(j.lat, j.lon)}</td>
+              <td>${Number(j.in_current_work) ? "Yes" : "No"}</td>
+              <td>${j.completed_at ? esc(j.completed_at) : ""}</td>
+              <td>${j.invoiced_at ? esc(j.invoiced_at) : ""}</td>
               <td>${j.asset_ref ? "Matched" : "<span class='error'>Unmatched</span>"}</td>
               <td>${esc(j.updated_at || "")}</td>
             </tr>
@@ -165,8 +215,24 @@
   if (searchInput) searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") loadJobs();
   });
+  if (moduleInput) moduleInput.addEventListener("change", loadJobs);
+  if (statusInput) statusInput.addEventListener("change", loadJobs);
+  if (assetTypeInput) assetTypeInput.addEventListener("change", loadJobs);
+  if (currentWorkInput) currentWorkInput.addEventListener("change", loadJobs);
+  if (invoiceReadyInput) invoiceReadyInput.addEventListener("change", loadJobs);
   if (importBtn) importBtn.addEventListener("click", importCsv);
   if (previewXlsxBtn) previewXlsxBtn.addEventListener("click", () => importXlsxBundle(true));
   if (importXlsxBtn) importXlsxBtn.addEventListener("click", () => importXlsxBundle(false));
+  if (selectAllBtn) selectAllBtn.addEventListener("click", () => {
+    document.querySelectorAll(".job-select").forEach((el) => { el.checked = true; });
+  });
+  if (clearSelBtn) clearSelBtn.addEventListener("click", () => {
+    document.querySelectorAll(".job-select").forEach((el) => { el.checked = false; });
+  });
+  if (addCurrentBtn) addCurrentBtn.addEventListener("click", () => updateFlags({ in_current_work: 1 }, "Added to current work"));
+  if (removeCurrentBtn) removeCurrentBtn.addEventListener("click", () => updateFlags({ in_current_work: 0 }, "Removed from current work"));
+  if (markCompletedBtn) markCompletedBtn.addEventListener("click", () => updateFlags({ mark_completed: 1 }, "Marked completed"));
+  if (markInvoicedBtn) markInvoicedBtn.addEventListener("click", () => updateFlags({ mark_invoiced: 1 }, "Marked invoiced"));
+  if (invoiceAsCompletedBtn) invoiceAsCompletedBtn.addEventListener("click", () => updateFlags({ mark_completed: 1, mark_invoiced: 1 }, "Marked completed and invoiced"));
   loadJobs();
 })();
