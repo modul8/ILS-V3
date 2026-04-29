@@ -42,6 +42,13 @@
     return `<a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}">Map</a>`;
   }
 
+  function assetDisplay(assetType, assetId) {
+    const t = String(assetType || "").trim().toLowerCase();
+    let id = String(assetId || "").trim();
+    if (t === "drain") id = id.replace(/^drain\s+/i, "").trim();
+    return `${t ? `${t} ` : ""}${id}`.trim();
+  }
+
   async function api(action, method, body, params) {
     const url = new URL("api/index.php", window.location.href);
     url.searchParams.set("action", action);
@@ -128,7 +135,7 @@
             <tr>
               ${isAdmin ? `<td><input class="job-select" type="checkbox" value="${Number(j.id) || 0}"></td>` : ""}
               <td>${esc(j.module)}</td>
-              <td>${esc(j.asset_type || "")} ${esc(j.asset_id || "")}</td>
+              <td>${esc(assetDisplay(j.asset_type || "", j.asset_id || ""))}</td>
               <td>${esc(j.work_order || "")}</td>
               <td>${esc(j.purchase_order || "")}</td>
               <td>${esc(j.status || "")}</td>
