@@ -46,7 +46,7 @@
     const t = String(assetType || "").trim().toLowerCase();
     let id = String(assetId || "").trim();
     if (t === "drain") id = id.replace(/^drain\s+/i, "").trim();
-    return `${t ? `${t} ` : ""}${id}`.trim();
+    return id;
   }
 
   async function api(action, method, body, params) {
