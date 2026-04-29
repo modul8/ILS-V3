@@ -64,8 +64,9 @@ if [ -n "$APP_OWNER" ]; then
 fi
 
 log "Setting permissions"
-chmod -R u+rwX,go+rX "$DEST_DIR" || warn "chmod app dir failed"
-chmod -R u+rwX,go+rwx "$DEST_DIR/uploads" || warn "chmod uploads failed"
+# Keep chmod scoped to key writable paths to avoid noisy permission warnings on TrueNAS datasets.
+chmod u+rw "$DEST_DIR/config.php" 2>/dev/null || warn "chmod config.php skipped"
+chmod u+rwx,go+rwx "$DEST_DIR/uploads" 2>/dev/null || warn "chmod uploads dir skipped"
 
 log "Syncing pipeline files"
 rsync -av --delete \
@@ -77,8 +78,10 @@ rsync -av --delete \
 
 log "Ensuring pipeline runtime directories"
 mkdir -p "$PIPELINE_DEST_DIR/input_pdfs" "$PIPELINE_DEST_DIR/outputs/images"
-chmod -R u+rwX,go+rX "$PIPELINE_DEST_DIR" || warn "chmod pipeline dir failed"
-chmod -R u+rwX,go+rwx "$PIPELINE_DEST_DIR/input_pdfs" "$PIPELINE_DEST_DIR/outputs" || warn "chmod pipeline runtime dirs failed"
+# Do not chmod recursively under pipeline runtime content; existing files may be owned by mapped IDs.
+chmod u+rwx,go+rwx "$PIPELINE_DEST_DIR/input_pdfs" 2>/dev/null || warn "chmod input_pdfs dir skipped"
+chmod u+rwx,go+rwx "$PIPELINE_DEST_DIR/outputs" 2>/dev/null || warn "chmod outputs dir skipped"
+chmod u+rwx,go+rwx "$PIPELINE_DEST_DIR/outputs/images" 2>/dev/null || warn "chmod outputs/images dir skipped"
 
 if [ "$DB_MIGRATE" = "1" ]; then
   [ -n "$DB_NAME" ] || fail "DB_NAME required when DB_MIGRATE=1"
