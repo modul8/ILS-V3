@@ -894,7 +894,7 @@ if ($action === "list_jobs" && $method === "GET") {
     $sql = "SELECT
               j.id, j.job_key, j.module, j.asset_type, j.asset_id, j.asset_ref,
               j.work_order, j.purchase_order, j.status, j.scheduled_date, j.description,
-              j.lat, j.lon, j.updated_at, j.in_current_work, j.completed_at, j.invoiced_at,
+              j.lat, j.lon, j.updated_at, j.in_current_work, j.completed_at, j.invoiced_at, j.meta,
               a.asset_id AS matched_asset_id, a.updated_at AS asset_updated_at
             FROM jobs j
             LEFT JOIN assets a ON a.id = j.asset_ref";

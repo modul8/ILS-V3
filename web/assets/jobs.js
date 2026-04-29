@@ -49,6 +49,40 @@
     return id;
   }
 
+  function parseMeta(metaText) {
+    if (!metaText) return {};
+    try {
+      const obj = JSON.parse(metaText);
+      return obj && typeof obj === "object" ? obj : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function segmentText(job) {
+    const meta = parseMeta(job.meta);
+    const hasNums = Number.isFinite(Number(meta.start_m)) && Number.isFinite(Number(meta.end_m));
+    if (hasNums) {
+      return `(${Math.round(Number(meta.start_m))}-${Math.round(Number(meta.end_m))})`;
+    }
+    const m = String(job.description || "").match(/\((\d+)\s*-\s*(\d+)\)/);
+    if (m) return `(${m[1]}-${m[2]})`;
+    return "";
+  }
+
+  function totalKmText(job) {
+    const meta = parseMeta(job.meta);
+    if (Number.isFinite(Number(meta.qty_km))) {
+      return `${Number(meta.qty_km).toFixed(2)}km`;
+    }
+    const m = segmentText(job).match(/\((\d+)-(\d+)\)/);
+    if (m) {
+      const d = Math.max(0, Number(m[2]) - Number(m[1]));
+      return `${(d / 1000).toFixed(2)}km`;
+    }
+    return "";
+  }
+
   async function api(action, method, body, params) {
     const url = new URL("api/index.php", window.location.href);
     url.searchParams.set("action", action);
@@ -119,6 +153,8 @@
             ${isAdmin ? "<th></th>" : ""}
             <th>Module</th>
             <th>Asset</th>
+            <th>Range</th>
+            <th>Total</th>
             <th>WO</th>
             <th>PO</th>
             <th>Status</th>
@@ -136,6 +172,8 @@
               ${isAdmin ? `<td><input class="job-select" type="checkbox" value="${Number(j.id) || 0}"></td>` : ""}
               <td>${esc(j.module)}</td>
               <td>${esc(assetDisplay(j.asset_type || "", j.asset_id || ""))}</td>
+              <td>${esc(segmentText(j))}</td>
+              <td>${esc(totalKmText(j))}</td>
               <td>${esc(j.work_order || "")}</td>
               <td>${esc(j.purchase_order || "")}</td>
               <td>${esc(j.status || "")}</td>
