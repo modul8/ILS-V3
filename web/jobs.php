@@ -88,6 +88,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
           </label>
         </div>
         <div class="line">
+          <button class="btn btn-secondary" id="jobsPreviewXlsxBtn" type="button">Dry Run Preview</button>
           <button class="btn" id="jobsImportXlsxBtn" type="button">Import XLSX Bundle</button>
         </div>
         <div id="jobsImportXlsxMsg"></div>

@@ -12,6 +12,7 @@
   const importFile = document.getElementById("jobsCsvFile");
   const importMsg = document.getElementById("jobsImportMsg");
   const importXlsxBtn = document.getElementById("jobsImportXlsxBtn");
+  const previewXlsxBtn = document.getElementById("jobsPreviewXlsxBtn");
   const workFileInput = document.getElementById("jobsWorkFile");
   const jobFilesInput = document.getElementById("jobsJobFiles");
   const importXlsxMsg = document.getElementById("jobsImportXlsxMsg");
@@ -120,7 +121,7 @@
     await loadJobs();
   }
 
-  async function importXlsxBundle() {
+  async function importXlsxBundle(dryRun) {
     if (!isAdmin) return;
     if (!workFileInput || !workFileInput.files || !workFileInput.files.length) {
       importXlsxMsg.className = "error";
@@ -133,12 +134,13 @@
       return;
     }
     importXlsxMsg.className = "";
-    importXlsxMsg.textContent = "Importing XLSX bundle...";
+    importXlsxMsg.textContent = dryRun ? "Running dry-run preview..." : "Importing XLSX bundle...";
     const form = new FormData();
     form.append("work_file", workFileInput.files[0]);
     Array.from(jobFilesInput.files).forEach((f) => form.append("job_files[]", f));
     const url = new URL("api/index.php", window.location.href);
     url.searchParams.set("action", "import_jobs_xlsx_bundle");
+    if (dryRun) url.searchParams.set("dry_run", "1");
     const res = await fetch(url, { method: "POST", body: form });
     const j = await res.json();
     if (!j.ok) {
@@ -146,8 +148,15 @@
       importXlsxMsg.textContent = `${j.error || "XLSX import failed."}${j.detail ? ` (${j.detail})` : ""}`;
       return;
     }
-    importXlsxMsg.className = "success";
     const c = j.counts || {};
+    if (dryRun) {
+      importXlsxMsg.className = "meta";
+      const p = j.preview || [];
+      const previewText = p.length ? ` Sample: ${p.map((r) => `${r.module || "work"}:${r.asset_type || ""} ${r.asset_id || ""}`).join(" | ")}` : "";
+      importXlsxMsg.textContent = `Dry run only. Rows: ${j.rows}. Matched: ${j.matched_assets}, Unmatched: ${j.unmatched_assets}. Drains: ${c.drain_rows || 0}, Other: ${c.other_rows || 0}.${previewText}`;
+      return;
+    }
+    importXlsxMsg.className = "success";
     importXlsxMsg.textContent = `Imported ${j.rows} rows. Matched: ${j.matched_assets}, Unmatched: ${j.unmatched_assets}. Drains: ${c.drain_rows || 0}, Other: ${c.other_rows || 0}.`;
     await loadJobs();
   }
@@ -157,6 +166,7 @@
     if (e.key === "Enter") loadJobs();
   });
   if (importBtn) importBtn.addEventListener("click", importCsv);
-  if (importXlsxBtn) importXlsxBtn.addEventListener("click", importXlsxBundle);
+  if (previewXlsxBtn) previewXlsxBtn.addEventListener("click", () => importXlsxBundle(true));
+  if (importXlsxBtn) importXlsxBtn.addEventListener("click", () => importXlsxBundle(false));
   loadJobs();
 })();

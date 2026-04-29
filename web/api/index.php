@@ -1053,6 +1053,7 @@ if ($action === "import_jobs_xlsx_bundle" && $method === "POST") {
         ]);
         exit;
     }
+    $dry_run = (string)($_GET["dry_run"] ?? "") === "1";
     $rows = $parsed["rows"] ?? [];
     if (!is_array($rows) || !$rows) {
         http_response_code(400);
@@ -1077,11 +1078,12 @@ if ($action === "import_jobs_xlsx_bundle" && $method === "POST") {
               lat = COALESCE(VALUES(lat), lat),
               lon = COALESCE(VALUES(lon), lon),
               meta = VALUES(meta)";
-    $stmt = $pdo->prepare($sql);
+    $stmt = $dry_run ? null : $pdo->prepare($sql);
 
     $inserted = 0;
     $matched = 0;
     $unmatched = 0;
+    $preview = [];
     foreach ($rows as $r) {
         if (!is_array($r)) continue;
         $asset_type = clean_asset_type((string)($r["asset_type"] ?? ""));
@@ -1126,30 +1128,46 @@ if ($action === "import_jobs_xlsx_bundle" && $method === "POST") {
         }
         if ($scheduled_date === "") $scheduled_date = null;
 
-        $stmt->execute([
-            ":job_key" => $job_key,
-            ":module" => $module,
-            ":asset_type" => $asset_type === "" ? null : $asset_type,
-            ":asset_id" => $asset_id === "" ? null : $asset_id,
-            ":asset_ref" => $asset_ref,
-            ":work_order" => $work_order === "" ? null : $work_order,
-            ":purchase_order" => $purchase_order === "" ? null : $purchase_order,
-            ":status" => $status,
-            ":scheduled_date" => $scheduled_date,
-            ":description" => $description === "" ? null : $description,
-            ":lat" => $lat,
-            ":lon" => $lon,
-            ":meta" => json_encode($meta, JSON_UNESCAPED_SLASHES),
-        ]);
+        if ($dry_run) {
+            if (count($preview) < 12) {
+                $preview[] = [
+                    "job_key" => $job_key,
+                    "module" => $module,
+                    "asset_type" => $asset_type,
+                    "asset_id" => $asset_id,
+                    "work_order" => $work_order,
+                    "purchase_order" => $purchase_order,
+                    "matched_asset" => $asset_ref !== null,
+                ];
+            }
+        } else {
+            $stmt->execute([
+                ":job_key" => $job_key,
+                ":module" => $module,
+                ":asset_type" => $asset_type === "" ? null : $asset_type,
+                ":asset_id" => $asset_id === "" ? null : $asset_id,
+                ":asset_ref" => $asset_ref,
+                ":work_order" => $work_order === "" ? null : $work_order,
+                ":purchase_order" => $purchase_order === "" ? null : $purchase_order,
+                ":status" => $status,
+                ":scheduled_date" => $scheduled_date,
+                ":description" => $description === "" ? null : $description,
+                ":lat" => $lat,
+                ":lon" => $lon,
+                ":meta" => json_encode($meta, JSON_UNESCAPED_SLASHES),
+            ]);
+        }
         $inserted++;
     }
 
     echo json_encode([
         "ok" => true,
+        "dry_run" => $dry_run,
         "rows" => $inserted,
         "matched_assets" => $matched,
         "unmatched_assets" => $unmatched,
         "counts" => $parsed["counts"] ?? null,
+        "preview" => $preview,
     ]);
     exit;
 }
