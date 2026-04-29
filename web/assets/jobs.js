@@ -11,6 +11,10 @@
   const importBtn = document.getElementById("jobsImportBtn");
   const importFile = document.getElementById("jobsCsvFile");
   const importMsg = document.getElementById("jobsImportMsg");
+  const importXlsxBtn = document.getElementById("jobsImportXlsxBtn");
+  const workFileInput = document.getElementById("jobsWorkFile");
+  const jobFilesInput = document.getElementById("jobsJobFiles");
+  const importXlsxMsg = document.getElementById("jobsImportXlsxMsg");
 
   function esc(v) {
     return String(v || "")
@@ -116,10 +120,43 @@
     await loadJobs();
   }
 
+  async function importXlsxBundle() {
+    if (!isAdmin) return;
+    if (!workFileInput || !workFileInput.files || !workFileInput.files.length) {
+      importXlsxMsg.className = "error";
+      importXlsxMsg.textContent = "Choose the WO/PO XLSX file first.";
+      return;
+    }
+    if (!jobFilesInput || !jobFilesInput.files || !jobFilesInput.files.length) {
+      importXlsxMsg.className = "error";
+      importXlsxMsg.textContent = "Choose one or more drain job XLSX files.";
+      return;
+    }
+    importXlsxMsg.className = "";
+    importXlsxMsg.textContent = "Importing XLSX bundle...";
+    const form = new FormData();
+    form.append("work_file", workFileInput.files[0]);
+    Array.from(jobFilesInput.files).forEach((f) => form.append("job_files[]", f));
+    const url = new URL("api/index.php", window.location.href);
+    url.searchParams.set("action", "import_jobs_xlsx_bundle");
+    const res = await fetch(url, { method: "POST", body: form });
+    const j = await res.json();
+    if (!j.ok) {
+      importXlsxMsg.className = "error";
+      importXlsxMsg.textContent = `${j.error || "XLSX import failed."}${j.detail ? ` (${j.detail})` : ""}`;
+      return;
+    }
+    importXlsxMsg.className = "success";
+    const c = j.counts || {};
+    importXlsxMsg.textContent = `Imported ${j.rows} rows. Matched: ${j.matched_assets}, Unmatched: ${j.unmatched_assets}. Drains: ${c.drain_rows || 0}, Other: ${c.other_rows || 0}.`;
+    await loadJobs();
+  }
+
   if (refreshBtn) refreshBtn.addEventListener("click", loadJobs);
   if (searchInput) searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") loadJobs();
   });
   if (importBtn) importBtn.addEventListener("click", importCsv);
+  if (importXlsxBtn) importXlsxBtn.addEventListener("click", importXlsxBundle);
   loadJobs();
 })();

@@ -76,6 +76,21 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
           <button class="btn" id="jobsImportBtn" type="button">Import CSV</button>
         </div>
         <div id="jobsImportMsg"></div>
+        <hr>
+        <h2>Import XLSX Bundle (V2-style)</h2>
+        <div class="meta">Upload 1 WO/PO file and 1+ drain job files. `Work Orders` column overrides `MI #` when populated.</div>
+        <div class="grid">
+          <label>WO/PO File (updated work list)
+            <input id="jobsWorkFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          </label>
+          <label>Drain Job Files (one or more)
+            <input id="jobsJobFiles" type="file" multiple accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          </label>
+        </div>
+        <div class="line">
+          <button class="btn" id="jobsImportXlsxBtn" type="button">Import XLSX Bundle</button>
+        </div>
+        <div id="jobsImportXlsxMsg"></div>
       </section>
     <?php endif; ?>
 
@@ -90,7 +105,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
       role: <?php echo json_encode($current_user["role"]); ?>
     };
   </script>
-  <script src="assets/jobs.js"></script>
+  <script src="assets/jobs.js?v=<?php echo (string)@filemtime(__DIR__ . '/assets/jobs.js'); ?>"></script>
 </body>
 </html>
 

@@ -224,6 +224,30 @@ function run_mapping_cmd_json(array $cfg, array $parts): array {
     ];
 }
 
+function run_python_json(array $cfg, array $parts): array {
+    $python = trim((string)($cfg["mapping_python_bin"] ?? "python3"));
+    $cmd_parts = array_merge([$python], $parts);
+    $escaped = array_map("escapeshellarg", $cmd_parts);
+    $cmd = implode(" ", $escaped) . " 2>&1";
+    $output = [];
+    $code = 0;
+    exec($cmd, $output, $code);
+    $txt = trim(implode("\n", $output));
+    $data = json_decode($txt, true);
+    if (is_array($data)) {
+        $data["exit_code"] = $code;
+        $data["command"] = $cmd;
+        return $data;
+    }
+    return [
+        "ok" => false,
+        "error" => "invalid_json_from_python",
+        "exit_code" => $code,
+        "command" => $cmd,
+        "output" => $txt,
+    ];
+}
+
 function mapping_dirs(array $cfg, bool $ensure = false): array {
     $root = mapping_root($cfg);
     $input_dir = path_join($root, "input_pdfs");
@@ -960,6 +984,172 @@ if ($action === "import_jobs_csv" && $method === "POST") {
         "rows" => $inserted,
         "matched_assets" => $matched,
         "unmatched_assets" => $unmatched,
+    ]);
+    exit;
+}
+
+if ($action === "import_jobs_xlsx_bundle" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    if (!isset($_FILES["work_file"]) || !isset($_FILES["work_file"]["tmp_name"]) || !is_uploaded_file($_FILES["work_file"]["tmp_name"])) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_work_file"]);
+        exit;
+    }
+    if (!isset($_FILES["job_files"]) || !isset($_FILES["job_files"]["tmp_name"])) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_job_files"]);
+        exit;
+    }
+
+    $tmp_dir = upload_root() . "/tmp_jobs_import_" . date("Ymd_His") . "_" . mt_rand(1000, 9999);
+    @mkdir($tmp_dir, 0775, true);
+    $work_tmp = $tmp_dir . "/work.xlsx";
+    if (!move_uploaded_file($_FILES["work_file"]["tmp_name"], $work_tmp)) {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "work_file_save_failed"]);
+        exit;
+    }
+
+    $job_paths = [];
+    $names = $_FILES["job_files"]["name"] ?? [];
+    $tmps = $_FILES["job_files"]["tmp_name"] ?? [];
+    if (!is_array($tmps)) {
+        $tmps = [$tmps];
+        $names = is_array($names) ? $names : [$names];
+    }
+    foreach ($tmps as $i => $tmp_name) {
+        if (!$tmp_name || !is_uploaded_file($tmp_name)) continue;
+        $base = basename((string)($names[$i] ?? ("job_" . $i . ".xlsx")));
+        $dest = $tmp_dir . "/" . preg_replace("/[^a-z0-9_.-]/i", "_", $base);
+        if ($dest === $tmp_dir . "/") $dest = $tmp_dir . "/job_" . $i . ".xlsx";
+        if (move_uploaded_file($tmp_name, $dest)) {
+            $job_paths[] = $dest;
+        }
+    }
+    if (!$job_paths) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "no_valid_job_files"]);
+        exit;
+    }
+
+    $script = dirname(__DIR__) . "/../pipeline/scripts/import_jobs_bundle.py";
+    if (!file_exists($script)) {
+        http_response_code(500);
+        echo json_encode(["ok" => false, "error" => "import_script_missing"]);
+        exit;
+    }
+    $cmd_parts = array_merge([$script, "--work", $work_tmp, "--jobs"], $job_paths);
+    $parsed = run_python_json($cfg, $cmd_parts);
+    if (!($parsed["ok"] ?? false)) {
+        http_response_code(400);
+        echo json_encode([
+            "ok" => false,
+            "error" => "xlsx_parse_failed",
+            "detail" => $parsed["error"] ?? ($parsed["output"] ?? "unknown"),
+        ]);
+        exit;
+    }
+    $rows = $parsed["rows"] ?? [];
+    if (!is_array($rows) || !$rows) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "no_rows_parsed"]);
+        exit;
+    }
+
+    $sql = "INSERT INTO jobs
+            (job_key, module, asset_type, asset_id, asset_ref, work_order, purchase_order, status, scheduled_date, description, lat, lon, meta)
+            VALUES
+            (:job_key, :module, :asset_type, :asset_id, :asset_ref, :work_order, :purchase_order, :status, :scheduled_date, :description, :lat, :lon, :meta)
+            ON DUPLICATE KEY UPDATE
+              module = VALUES(module),
+              asset_type = VALUES(asset_type),
+              asset_id = VALUES(asset_id),
+              asset_ref = VALUES(asset_ref),
+              work_order = VALUES(work_order),
+              purchase_order = VALUES(purchase_order),
+              status = VALUES(status),
+              scheduled_date = VALUES(scheduled_date),
+              description = VALUES(description),
+              lat = COALESCE(VALUES(lat), lat),
+              lon = COALESCE(VALUES(lon), lon),
+              meta = VALUES(meta)";
+    $stmt = $pdo->prepare($sql);
+
+    $inserted = 0;
+    $matched = 0;
+    $unmatched = 0;
+    foreach ($rows as $r) {
+        if (!is_array($r)) continue;
+        $asset_type = clean_asset_type((string)($r["asset_type"] ?? ""));
+        $asset_id = trim((string)($r["asset_id"] ?? ""));
+        $module = clean_job_module((string)($r["module"] ?? "work"));
+        $work_order = trim((string)($r["work_order"] ?? ""));
+        $purchase_order = trim((string)($r["purchase_order"] ?? ""));
+        $status = clean_job_status((string)($r["status"] ?? "pending"));
+        $scheduled_date = trim((string)($r["scheduled_date"] ?? ""));
+        $description = trim((string)($r["description"] ?? ""));
+        $job_key = trim((string)($r["job_key"] ?? ""));
+        if ($job_key === "") {
+            $job_key = normalized_job_key([
+                "module" => $module,
+                "asset_type" => $asset_type,
+                "asset_id" => $asset_id,
+                "work_order" => $work_order,
+                "purchase_order" => $purchase_order,
+                "description" => $description,
+            ]);
+        }
+
+        $asset_ref = null;
+        $lat = null;
+        $lon = null;
+        $meta = is_array($r["meta"] ?? null) ? $r["meta"] : [];
+        $meta["import_source"] = "xlsx_bundle";
+        if ($asset_type !== "" && $asset_id !== "") {
+            $asset = get_asset_row($pdo, $asset_type, $asset_id);
+            if ($asset) {
+                $asset_ref = (int)$asset["id"];
+                $lat = $asset["lat"] !== null ? $asset["lat"] : null;
+                $lon = $asset["lon"] !== null ? $asset["lon"] : null;
+                $matched++;
+            } else {
+                $unmatched++;
+                $meta["unmatched_asset"] = true;
+            }
+        } else {
+            $unmatched++;
+            $meta["unmatched_asset"] = true;
+        }
+        if ($scheduled_date === "") $scheduled_date = null;
+
+        $stmt->execute([
+            ":job_key" => $job_key,
+            ":module" => $module,
+            ":asset_type" => $asset_type === "" ? null : $asset_type,
+            ":asset_id" => $asset_id === "" ? null : $asset_id,
+            ":asset_ref" => $asset_ref,
+            ":work_order" => $work_order === "" ? null : $work_order,
+            ":purchase_order" => $purchase_order === "" ? null : $purchase_order,
+            ":status" => $status,
+            ":scheduled_date" => $scheduled_date,
+            ":description" => $description === "" ? null : $description,
+            ":lat" => $lat,
+            ":lon" => $lon,
+            ":meta" => json_encode($meta, JSON_UNESCAPED_SLASHES),
+        ]);
+        $inserted++;
+    }
+
+    echo json_encode([
+        "ok" => true,
+        "rows" => $inserted,
+        "matched_assets" => $matched,
+        "unmatched_assets" => $unmatched,
+        "counts" => $parsed["counts"] ?? null,
     ]);
     exit;
 }
