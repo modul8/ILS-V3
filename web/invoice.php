@@ -41,6 +41,27 @@ if (!$is_admin) {
       <h1>Invoice Queue</h1>
       <p>Completed jobs ready for invoicing.</p>
       <div class="grid">
+        <label>Dolibarr Base URL
+          <input id="invBaseUrl" placeholder="https://yourhost/dolibarr">
+        </label>
+        <label>Dolibarr API Key
+          <input id="invApiKey" type="password" placeholder="API key">
+        </label>
+        <label>Customer SOCID
+          <input id="invSocid" placeholder="e.g. 1223">
+        </label>
+        <label>Line Rate
+          <input id="invLineRate" type="number" step="0.01" min="0" value="0">
+        </label>
+        <label>GST/TVA %
+          <input id="invTvaTx" type="number" step="0.01" min="0" value="0">
+        </label>
+      </div>
+      <div class="line">
+        <button class="btn btn-secondary" id="invTestConnBtn" type="button">Test Dolibarr Connection</button>
+        <button class="btn" id="invCreateDraftsBtn" type="button">Create Draft Invoices</button>
+      </div>
+      <div class="grid">
         <label>Module
           <select id="invModule">
             <option value="">All</option>
@@ -92,9 +113,13 @@ if (!$is_admin) {
   </main>
 
   <script>
-    window.ILS_V3_INVOICE = { role: <?php echo json_encode($current_user["role"]); ?> };
+    window.ILS_V3_INVOICE = {
+      role: <?php echo json_encode($current_user["role"]); ?>,
+      dolibarr_base_url: <?php echo json_encode((string)($cfg["dolibarr_base_url"] ?? "")); ?>,
+      dolibarr_socid: <?php echo json_encode((string)($cfg["dolibarr_socid"] ?? "")); ?>,
+      dolibarr_tva_tx: <?php echo json_encode((string)($cfg["dolibarr_tva_tx"] ?? "0")); ?>
+    };
   </script>
   <script src="assets/invoice.js?v=<?php echo (string)@filemtime(__DIR__ . '/assets/invoice.js'); ?>"></script>
 </body>
 </html>
-

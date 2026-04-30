@@ -154,6 +154,93 @@ function normalized_job_key(array $row): string {
     return "job_" . substr(sha1($raw), 0, 20);
 }
 
+function invoice_cfg(array $cfg): array {
+    return [
+        "base_url" => trim((string)($cfg["dolibarr_base_url"] ?? "")),
+        "api_key" => trim((string)($cfg["dolibarr_api_key"] ?? "")),
+        "socid" => trim((string)($cfg["dolibarr_socid"] ?? "")),
+        "tva_tx" => (float)($cfg["dolibarr_tva_tx"] ?? 0.0),
+    ];
+}
+
+function invoice_api_root(string $base_url): string {
+    $u = rtrim(trim($base_url), "/");
+    if ($u === "") return "";
+    if (preg_match("~\/api\/index\.php$~i", $u)) return $u;
+    return $u . "/api/index.php";
+}
+
+function invoice_dolibarr_request(string $method, string $url, string $api_key, array $data = [], int $timeout = 30): array {
+    if (!function_exists("curl_init")) {
+        return ["ok" => false, "status" => 0, "body" => "", "error" => "curl_missing"];
+    }
+    $payload = http_build_query($data);
+    $headers = [
+        "DOLAPIKEY: " . $api_key,
+        "Accept: application/json",
+        "User-Agent: ILS-V3/1.0",
+    ];
+    $send = function (string $request_url) use ($method, $payload, $headers, $timeout): array {
+        $ch = curl_init($request_url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => strtoupper($method),
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => $timeout,
+        ]);
+        if (strtoupper($method) !== "GET") {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            $hdrs = $headers;
+            $hdrs[] = "Content-Type: application/x-www-form-urlencoded";
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $hdrs);
+        }
+        $body = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $error = $errno ? curl_error($ch) : "";
+        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        return ["status" => $status, "body" => (string)$body, "error" => $error];
+    };
+
+    $r = $send($url);
+    if ($r["error"] !== "") return ["ok" => false, "status" => 0, "body" => "", "error" => $r["error"]];
+    if ($r["status"] === 401 || $r["status"] === 403) {
+        $sep = strpos($url, "?") === false ? "?" : "&";
+        $r2 = $send($url . $sep . "DOLAPIKEY=" . rawurlencode($api_key));
+        if ($r2["error"] !== "") return ["ok" => false, "status" => 0, "body" => "", "error" => $r2["error"]];
+        return ["ok" => ($r2["status"] >= 200 && $r2["status"] < 300), "status" => $r2["status"], "body" => $r2["body"], "error" => ""];
+    }
+    return ["ok" => ($r["status"] >= 200 && $r["status"] < 300), "status" => $r["status"], "body" => $r["body"], "error" => ""];
+}
+
+function invoice_parse_id(string $body): ?int {
+    $txt = trim($body);
+    if ($txt !== "" && ctype_digit($txt)) return (int)$txt;
+    $j = json_decode($body, true);
+    if (is_int($j) || (is_string($j) && ctype_digit($j))) return (int)$j;
+    if (is_array($j) && isset($j["id"]) && ctype_digit((string)$j["id"])) return (int)$j["id"];
+    return null;
+}
+
+function invoice_qty_from_job(array $job): float {
+    $meta = [];
+    if (!empty($job["meta"])) {
+        $m = json_decode((string)$job["meta"], true);
+        if (is_array($m)) $meta = $m;
+    }
+    if (isset($meta["qty_km"]) && is_numeric($meta["qty_km"])) {
+        $v = (float)$meta["qty_km"];
+        if ($v > 0) return round($v, 3);
+    }
+    $desc = (string)($job["description"] ?? "");
+    if (preg_match('/\((\d+)\s*-\s*(\d+)\)/', $desc, $m)) {
+        $a = (int)$m[1];
+        $b = (int)$m[2];
+        if ($b > $a) return round(($b - $a) / 1000.0, 3);
+    }
+    return 1.0;
+}
+
 function mapping_enabled(array $cfg): bool {
     return (bool)($cfg["mapping_enabled"] ?? false);
 }
@@ -997,6 +1084,195 @@ if ($action === "update_jobs_flags" && $method === "POST") {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     echo json_encode(["ok" => true, "updated" => $stmt->rowCount()]);
+    exit;
+}
+
+if ($action === "invoice_test_connection" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    $b = body_json();
+    $ic = invoice_cfg($cfg);
+    $base_url = trim((string)($b["base_url"] ?? $ic["base_url"]));
+    $api_key = trim((string)($b["api_key"] ?? $ic["api_key"]));
+    if ($base_url === "" || $api_key === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_dolibarr_config"]);
+        exit;
+    }
+    $url = invoice_api_root($base_url) . "/invoices?limit=1";
+    $r = invoice_dolibarr_request("GET", $url, $api_key, [], 12);
+    if (!$r["ok"]) {
+        echo json_encode(["ok" => false, "error" => "dolibarr_connection_failed", "status" => $r["status"], "detail" => substr($r["body"] ?: $r["error"], 0, 400)]);
+        exit;
+    }
+    echo json_encode(["ok" => true, "message" => "connection_ok"]);
+    exit;
+}
+
+if ($action === "invoice_create_drafts" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    $b = body_json();
+    $ids = $b["ids"] ?? [];
+    if (!is_array($ids) || !$ids) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_ids"]);
+        exit;
+    }
+    $ids = array_values(array_unique(array_filter(array_map("intval", $ids), fn($v) => $v > 0)));
+    if (!$ids) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "no_valid_ids"]);
+        exit;
+    }
+    if (count($ids) > 300) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "too_many_ids"]);
+        exit;
+    }
+
+    $ic = invoice_cfg($cfg);
+    $base_url = trim((string)($b["base_url"] ?? $ic["base_url"]));
+    $api_key = trim((string)($b["api_key"] ?? $ic["api_key"]));
+    $socid = trim((string)($b["socid"] ?? $ic["socid"]));
+    $tva_tx = isset($b["tva_tx"]) ? (float)$b["tva_tx"] : (float)$ic["tva_tx"];
+    $line_rate = isset($b["line_rate"]) ? (float)$b["line_rate"] : 0.0;
+    if ($base_url === "" || $api_key === "" || $socid === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_dolibarr_config"]);
+        exit;
+    }
+    if ($line_rate < 0) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "invalid_line_rate"]);
+        exit;
+    }
+
+    $in = [];
+    $params = [];
+    foreach ($ids as $i => $id) {
+        $k = ":id_" . $i;
+        $in[] = $k;
+        $params[$k] = $id;
+    }
+    $sql = "SELECT id, module, asset_type, asset_id, work_order, purchase_order, status, description, meta, completed_at, invoiced_at
+            FROM jobs WHERE id IN (" . implode(",", $in) . ")";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) {
+        http_response_code(404);
+        echo json_encode(["ok" => false, "error" => "jobs_not_found"]);
+        exit;
+    }
+
+    $ready = array_values(array_filter($rows, fn($r) => !empty($r["completed_at"]) && empty($r["invoiced_at"])));
+    if (!$ready) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "no_completed_not_invoiced"]);
+        exit;
+    }
+
+    $groups = [];
+    foreach ($ready as $r) {
+        $po = trim((string)($r["purchase_order"] ?? ""));
+        if ($po === "") $po = "(no PO)";
+        if (!isset($groups[$po])) $groups[$po] = [];
+        $groups[$po][] = $r;
+    }
+
+    $api_root = invoice_api_root($base_url);
+    $created = [];
+    $marked_ids = [];
+    foreach ($groups as $po => $grows) {
+        $create_payload = [
+            "socid" => $socid,
+            "type" => "0",
+            "note_public" => "ILS V3 draft invoice import",
+            "ref_customer" => ($po === "(no PO)") ? "" : $po,
+        ];
+        $create_url = $api_root . "/invoices";
+        $cr = invoice_dolibarr_request("POST", $create_url, $api_key, $create_payload, 30);
+        if (!$cr["ok"]) {
+            http_response_code(502);
+            echo json_encode([
+                "ok" => false,
+                "error" => "dolibarr_create_invoice_failed",
+                "status" => $cr["status"],
+                "detail" => substr($cr["body"] ?: $cr["error"], 0, 500),
+                "created" => $created,
+            ]);
+            exit;
+        }
+        $invoice_id = invoice_parse_id($cr["body"]);
+        if (!$invoice_id) {
+            http_response_code(502);
+            echo json_encode(["ok" => false, "error" => "dolibarr_parse_invoice_id_failed", "detail" => substr($cr["body"], 0, 500), "created" => $created]);
+            exit;
+        }
+
+        foreach ($grows as $jr) {
+            $qty = invoice_qty_from_job($jr);
+            $desc = trim((string)($jr["asset_type"] ?? "") . " " . (string)($jr["asset_id"] ?? ""));
+            $seg = trim((string)($jr["description"] ?? ""));
+            if ($seg !== "") $desc .= " - " . $seg;
+            $line_payload = [
+                "desc" => $desc,
+                "qty" => number_format($qty, 2, ".", ""),
+                "subprice" => number_format($line_rate, 2, ".", ""),
+                "tva_tx" => number_format($tva_tx, 2, ".", ""),
+                "product_type" => "1",
+            ];
+            $line_url = $api_root . "/invoices/" . (int)$invoice_id . "/lines";
+            $lr = invoice_dolibarr_request("POST", $line_url, $api_key, $line_payload, 30);
+            if (!$lr["ok"]) {
+                http_response_code(502);
+                echo json_encode([
+                    "ok" => false,
+                    "error" => "dolibarr_add_line_failed",
+                    "status" => $lr["status"],
+                    "detail" => substr($lr["body"] ?: $lr["error"], 0, 500),
+                    "invoice_id" => $invoice_id,
+                    "job_id" => (int)$jr["id"],
+                    "created" => $created,
+                ]);
+                exit;
+            }
+            $marked_ids[] = (int)$jr["id"];
+            usleep(250000);
+        }
+
+        $created[] = [
+            "invoice_id" => (int)$invoice_id,
+            "purchase_order" => $po === "(no PO)" ? "" : $po,
+            "line_count" => count($grows),
+        ];
+        usleep(300000);
+    }
+
+    if ($marked_ids) {
+        $in2 = [];
+        $p2 = [];
+        foreach ($marked_ids as $i => $id) {
+            $k = ":m_" . $i;
+            $in2[] = $k;
+            $p2[$k] = $id;
+        }
+        $up = $pdo->prepare("UPDATE jobs SET invoiced_at = CURRENT_TIMESTAMP WHERE id IN (" . implode(",", $in2) . ")");
+        $up->execute($p2);
+    }
+
+    echo json_encode([
+        "ok" => true,
+        "created" => $created,
+        "updated_jobs" => count($marked_ids),
+    ]);
     exit;
 }
 

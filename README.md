@@ -72,11 +72,12 @@ Asset types supported:
 2. Edit DB credentials in `web/config.php`.
 3. Optional for mapping tools: set `mapping_enabled`, `mapping_pipeline_root`, `mapping_python_bin`.
 4. Optional for control-point asset auto-sync: set `mapping_api_key` (used by `pipeline/scripts/label_control_points.py`).
-5. Run `web/schema.sql` against your MariaDB/MySQL database.
-6. Deploy the contents of `web/` to your web root on TrueNAS.
-7. Ensure `web/uploads/` is writable by the web server user.
-8. Open `/setup_admin.php` once and create the first admin account.
-9. Sign in at `/login.php`.
+5. Optional for Invoice integration: set `dolibarr_base_url`, `dolibarr_api_key`, `dolibarr_socid`, `dolibarr_tva_tx`.
+6. Run `web/schema.sql` against your MariaDB/MySQL database.
+7. Deploy the contents of `web/` to your web root on TrueNAS.
+8. Ensure `web/uploads/` is writable by the web server user.
+9. Open `/setup_admin.php` once and create the first admin account.
+10. Sign in at `/login.php`.
 
 ### Optional: Use Deploy Script
 

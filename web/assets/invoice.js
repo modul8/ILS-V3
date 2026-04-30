@@ -6,6 +6,13 @@
   const assetTypeInput = document.getElementById("invAssetType");
   const viewInput = document.getElementById("invView");
   const searchInput = document.getElementById("invSearch");
+  const baseUrlInput = document.getElementById("invBaseUrl");
+  const apiKeyInput = document.getElementById("invApiKey");
+  const socidInput = document.getElementById("invSocid");
+  const lineRateInput = document.getElementById("invLineRate");
+  const tvaTxInput = document.getElementById("invTvaTx");
+  const testConnBtn = document.getElementById("invTestConnBtn");
+  const createDraftsBtn = document.getElementById("invCreateDraftsBtn");
   const refreshBtn = document.getElementById("invRefreshBtn");
   const selectAllBtn = document.getElementById("invSelectAllBtn");
   const clearBtn = document.getElementById("invClearBtn");
@@ -17,6 +24,9 @@
   const list = document.getElementById("invList");
 
   let currentRows = [];
+  if (baseUrlInput) baseUrlInput.value = cfg.dolibarr_base_url || "";
+  if (socidInput) socidInput.value = cfg.dolibarr_socid || "";
+  if (tvaTxInput) tvaTxInput.value = cfg.dolibarr_tva_tx || "0";
 
   function esc(v) {
     return String(v || "")
@@ -148,6 +158,63 @@
     await loadQueue();
   }
 
+  function dolibarrPayload() {
+    return {
+      base_url: String(baseUrlInput?.value || "").trim(),
+      api_key: String(apiKeyInput?.value || "").trim(),
+      socid: String(socidInput?.value || "").trim(),
+      line_rate: Number(lineRateInput?.value || 0),
+      tva_tx: Number(tvaTxInput?.value || 0),
+    };
+  }
+
+  async function testConnection() {
+    const payload = dolibarrPayload();
+    if (!payload.base_url || !payload.api_key) {
+      msg.className = "error";
+      msg.textContent = "Enter Dolibarr base URL and API key first.";
+      return;
+    }
+    msg.className = "";
+    msg.textContent = "Testing connection...";
+    const r = await api("invoice_test_connection", "POST", payload);
+    if (!r.ok) {
+      msg.className = "error";
+      msg.textContent = `${r.error || "Connection failed"}${r.detail ? `: ${r.detail}` : ""}`;
+      return;
+    }
+    msg.className = "success";
+    msg.textContent = "Dolibarr connection OK.";
+  }
+
+  async function createDrafts() {
+    const ids = selectedIds();
+    if (!ids.length) {
+      msg.className = "error";
+      msg.textContent = "Select one or more jobs first.";
+      return;
+    }
+    const payload = { ids, ...dolibarrPayload() };
+    if (!payload.base_url || !payload.api_key || !payload.socid) {
+      msg.className = "error";
+      msg.textContent = "Enter Dolibarr base URL, API key, and SOCID first.";
+      return;
+    }
+    msg.className = "";
+    msg.textContent = "Creating draft invoices in Dolibarr...";
+    const r = await api("invoice_create_drafts", "POST", payload);
+    if (!r.ok) {
+      msg.className = "error";
+      msg.textContent = `${r.error || "Draft invoice creation failed"}${r.detail ? `: ${r.detail}` : ""}`;
+      return;
+    }
+    const created = Array.isArray(r.created) ? r.created : [];
+    const info = created.map((x) => `#${x.invoice_id}${x.purchase_order ? " (PO " + x.purchase_order + ")" : ""}`).join(", ");
+    msg.className = "success";
+    msg.textContent = `Created ${created.length} draft invoice(s), marked ${r.updated_jobs || 0} jobs invoiced.${info ? " " + info : ""}`;
+    await loadQueue();
+  }
+
   function exportCsv() {
     if (!currentRows.length) {
       msg.className = "error";
@@ -176,6 +243,7 @@
   markBtn.addEventListener("click", () => markInvoiced(true));
   undoBtn.addEventListener("click", () => markInvoiced(false));
   exportBtn.addEventListener("click", exportCsv);
+  if (testConnBtn) testConnBtn.addEventListener("click", testConnection);
+  if (createDraftsBtn) createDraftsBtn.addEventListener("click", createDrafts);
   loadQueue();
 })();
-
