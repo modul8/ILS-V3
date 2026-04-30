@@ -859,6 +859,8 @@ if ($action === "list_jobs" && $method === "GET") {
     $asset_type = clean_asset_type((string)($_GET["asset_type"] ?? ""));
     $current_work = trim((string)($_GET["current_work"] ?? ""));
     $invoice_ready = trim((string)($_GET["invoice_ready"] ?? ""));
+    $completed = trim((string)($_GET["completed"] ?? ""));
+    $invoiced = trim((string)($_GET["invoiced"] ?? ""));
     $q = trim((string)($_GET["q"] ?? ""));
     $limit = (int)($_GET["limit"] ?? 300);
     if ($limit <= 0 || $limit > 2000) $limit = 300;
@@ -885,6 +887,16 @@ if ($action === "list_jobs" && $method === "GET") {
     }
     if ($invoice_ready === "1") {
         $where[] = "j.completed_at IS NOT NULL AND j.invoiced_at IS NULL";
+    }
+    if ($completed === "1") {
+        $where[] = "j.completed_at IS NOT NULL";
+    } elseif ($completed === "0") {
+        $where[] = "j.completed_at IS NULL";
+    }
+    if ($invoiced === "1") {
+        $where[] = "j.invoiced_at IS NOT NULL";
+    } elseif ($invoiced === "0") {
+        $where[] = "j.invoiced_at IS NULL";
     }
     if ($q !== "") {
         $where[] = "(j.work_order LIKE :q OR j.purchase_order LIKE :q OR j.asset_id LIKE :q OR j.description LIKE :q)";

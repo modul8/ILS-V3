@@ -25,6 +25,7 @@ if (!$is_admin) {
       <a href="floodgates.php">Floodgates</a>
       <a href="jobs.php">Jobs</a>
       <a class="active" href="jobs_import.php">Job Import</a>
+      <a href="invoice.php">Invoice</a>
       <a href="mapping_tools.php">Mapping Tools</a>
       <a href="index.php">Home</a>
     </nav>
@@ -79,4 +80,3 @@ if (!$is_admin) {
   <script src="assets/jobs.js?v=<?php echo (string)@filemtime(__DIR__ . '/assets/jobs.js'); ?>"></script>
 </body>
 </html>
-

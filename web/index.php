@@ -48,6 +48,10 @@ require __DIR__ . "/_bootstrap.php";
         <h2>Job Import</h2>
         <p>Import work lists and link jobs to asset coordinates.</p>
       </a>
+      <a class="tile" href="invoice.php">
+        <h2>Invoice Queue</h2>
+        <p>Review completed jobs and mark invoicing status.</p>
+      </a>
       <?php endif; ?>
       <?php if (($current_user["role"] ?? "") === "admin"): ?>
       <a class="tile" href="mapping_tools.php">

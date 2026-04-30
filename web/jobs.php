@@ -20,6 +20,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
       <a href="floodgates.php">Floodgates</a>
       <a class="active" href="jobs.php">Jobs</a>
       <?php if ($is_admin): ?><a href="jobs_import.php">Job Import</a><?php endif; ?>
+      <?php if ($is_admin): ?><a href="invoice.php">Invoice</a><?php endif; ?>
       <?php if ($is_admin): ?><a href="mapping_tools.php">Mapping Tools</a><?php endif; ?>
       <a href="index.php">Home</a>
     </nav>
