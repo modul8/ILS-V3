@@ -1112,6 +1112,52 @@ if ($action === "invoice_test_connection" && $method === "POST") {
     exit;
 }
 
+if ($action === "invoice_list_customers" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    $b = body_json();
+    $ic = invoice_cfg($cfg);
+    $base_url = trim((string)($b["base_url"] ?? $ic["base_url"]));
+    $api_key = trim((string)($b["api_key"] ?? $ic["api_key"]));
+    if ($base_url === "" || $api_key === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_dolibarr_config"]);
+        exit;
+    }
+    $limit = (int)($b["limit"] ?? 500);
+    if ($limit <= 0 || $limit > 2000) $limit = 500;
+    $url = invoice_api_root($base_url) . "/thirdparties?limit=" . $limit;
+    $r = invoice_dolibarr_request("GET", $url, $api_key, [], 20);
+    if (!$r["ok"]) {
+        echo json_encode(["ok" => false, "error" => "dolibarr_customer_list_failed", "status" => $r["status"], "detail" => substr($r["body"] ?: $r["error"], 0, 400)]);
+        exit;
+    }
+    $decoded = json_decode($r["body"], true);
+    $rows = [];
+    if (is_array($decoded)) {
+        $src = $decoded;
+        if (isset($decoded["data"]) && is_array($decoded["data"])) $src = $decoded["data"];
+        foreach ($src as $it) {
+            if (!is_array($it)) continue;
+            $id = (string)($it["id"] ?? "");
+            if ($id === "" || !ctype_digit($id)) continue;
+            $name = trim((string)($it["name"] ?? $it["nom"] ?? ""));
+            $code = trim((string)($it["code_client"] ?? ""));
+            $label = $name !== "" ? $name : ("Customer " . $id);
+            if ($code !== "") $label .= " (" . $code . ")";
+            $rows[] = ["id" => (int)$id, "label" => $label];
+        }
+    }
+    usort($rows, function ($a, $b) {
+        return strcasecmp((string)$a["label"], (string)$b["label"]);
+    });
+    echo json_encode(["ok" => true, "customers" => $rows]);
+    exit;
+}
+
 if ($action === "invoice_create_drafts" && $method === "POST") {
     if (!auth_is_admin($current_user)) {
         http_response_code(403);

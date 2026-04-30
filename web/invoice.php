@@ -48,7 +48,9 @@ if (!$is_admin) {
           <input id="invApiKey" type="password" placeholder="API key">
         </label>
         <label>Customer SOCID
-          <input id="invSocid" placeholder="e.g. 1223">
+          <select id="invSocid">
+            <option value="">Select customer...</option>
+          </select>
         </label>
         <label>Line Rate
           <input id="invLineRate" type="number" step="0.01" min="0" value="0">

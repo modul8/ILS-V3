@@ -25,7 +25,7 @@
 
   let currentRows = [];
   if (baseUrlInput) baseUrlInput.value = cfg.dolibarr_base_url || "";
-  if (socidInput) socidInput.value = cfg.dolibarr_socid || "";
+  const defaultSocid = String(cfg.dolibarr_socid || "").trim();
   if (tvaTxInput) tvaTxInput.value = cfg.dolibarr_tva_tx || "0";
 
   function esc(v) {
@@ -168,6 +168,29 @@
     };
   }
 
+  function setSocidOptions(customers) {
+    if (!socidInput) return;
+    const rows = Array.isArray(customers) ? customers : [];
+    const opts = ['<option value="">Select customer...</option>']
+      .concat(rows.map((c) => `<option value="${Number(c.id) || 0}">${esc(c.label || ("Customer " + c.id))}</option>`));
+    socidInput.innerHTML = opts.join("");
+    if (defaultSocid && rows.some((c) => String(c.id) === defaultSocid)) {
+      socidInput.value = defaultSocid;
+    } else if (rows.length === 1) {
+      socidInput.value = String(rows[0].id);
+    }
+  }
+
+  async function loadCustomers() {
+    const payload = dolibarrPayload();
+    const r = await api("invoice_list_customers", "POST", payload);
+    if (!r.ok) {
+      return r;
+    }
+    setSocidOptions(r.customers || []);
+    return r;
+  }
+
   async function testConnection() {
     const payload = dolibarrPayload();
     if (!payload.base_url || !payload.api_key) {
@@ -183,8 +206,14 @@
       msg.textContent = `${r.error || "Connection failed"}${r.detail ? `: ${r.detail}` : ""}`;
       return;
     }
+    const customers = await loadCustomers();
+    if (!customers.ok) {
+      msg.className = "error";
+      msg.textContent = `Connection OK but customer list failed: ${customers.error || ""}${customers.detail ? `: ${customers.detail}` : ""}`;
+      return;
+    }
     msg.className = "success";
-    msg.textContent = "Dolibarr connection OK.";
+    msg.textContent = `Dolibarr connection OK. Loaded ${Array.isArray(customers.customers) ? customers.customers.length : 0} customer(s).`;
   }
 
   async function createDrafts() {
