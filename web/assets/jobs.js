@@ -49,6 +49,21 @@
     return id;
   }
 
+  function assetPageHref(job) {
+    const t = String(job.asset_type || "").trim().toLowerCase();
+    const id = String(job.asset_id || "").trim();
+    if (!id) return "";
+    const map = {
+      drain: "drains.php",
+      culvert: "culverts.php",
+      bridge: "bridges.php",
+      floodgate: "floodgates.php",
+    };
+    const page = map[t] || "";
+    if (!page) return "";
+    return `${page}?asset_id=${encodeURIComponent(id)}`;
+  }
+
   function parseMeta(metaText) {
     if (!metaText) return {};
     try {
@@ -158,11 +173,12 @@
       <div class="jobs-cards">
         ${rows.map((j) => {
           const title = `${assetDisplay(j.asset_type || "", j.asset_id || "")} ${segmentText(j)} ${totalKmText(j)}`.trim();
+          const assetHref = assetPageHref(j);
           return `
             <article class="job-card">
               <div class="job-card-head">
                 <input class="job-select" type="checkbox" value="${Number(j.id) || 0}" data-completed="${j.completed_at ? "1" : "0"}">
-                <div class="job-title">${esc(title)}</div>
+                <div class="job-title">${assetHref ? `<a class="link" href="${esc(assetHref)}">${esc(title)}</a>` : esc(title)}</div>
                 <div class="job-pin">${mapLink(j.lat, j.lon)}</div>
               </div>
               <div class="job-topline">

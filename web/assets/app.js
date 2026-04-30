@@ -413,5 +413,12 @@
     }
   });
   if (refreshListBtn) refreshListBtn.addEventListener("click", loadList);
-  loadList();
+  const initialAssetId = new URLSearchParams(window.location.search).get("asset_id");
+  if (initialAssetId) {
+    searchInput.value = initialAssetId;
+    loadBySearch();
+    loadList();
+  } else {
+    loadList();
+  }
 })();
