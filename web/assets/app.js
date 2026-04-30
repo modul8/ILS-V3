@@ -10,6 +10,7 @@
   const refreshListBtn = document.getElementById("refreshListBtn");
   const results = document.getElementById("results");
   const assetList = document.getElementById("assetList");
+  let currentAssetMeta = { work_order: "", purchase_order: "" };
 
   function esc(v) {
     return String(v || "")
@@ -121,6 +122,10 @@
     const readonly = !isAdmin;
     const dis = readonly ? "disabled" : "";
     const contacts = Array.isArray(asset.contacts) ? asset.contacts : [];
+    currentAssetMeta = {
+      work_order: String(asset.work_order || ""),
+      purchase_order: String(asset.purchase_order || ""),
+    };
     results.innerHTML = `
       <article class="card">
         <div class="line">
@@ -130,8 +135,6 @@
         <div class="grid">
           <label>Asset Type<input id="assetType" value="${esc(asset.asset_type)}" readonly></label>
           <label>Asset ID<input id="assetId" value="${esc(asset.asset_id)}" readonly></label>
-          <label>Work Order<input id="workOrder" value="${esc(asset.work_order)}" ${dis}></label>
-          <label>Purchase Order<input id="purchaseOrder" value="${esc(asset.purchase_order)}" ${dis}></label>
           <label>Latitude<input id="lat" value="${esc(asset.lat)}" ${dis}></label>
           <label>Longitude<input id="lon" value="${esc(asset.lon)}" ${dis}></label>
         </div>
@@ -242,11 +245,13 @@
 
   async function saveAdminChanges() {
     if (!isAdmin) return;
+    const workOrderEl = document.getElementById("workOrder");
+    const purchaseOrderEl = document.getElementById("purchaseOrder");
     const payload = {
       asset_type: document.getElementById("assetType").value.trim(),
       asset_id: document.getElementById("assetId").value.trim(),
-      work_order: document.getElementById("workOrder").value.trim(),
-      purchase_order: document.getElementById("purchaseOrder").value.trim(),
+      work_order: workOrderEl ? workOrderEl.value.trim() : currentAssetMeta.work_order,
+      purchase_order: purchaseOrderEl ? purchaseOrderEl.value.trim() : currentAssetMeta.purchase_order,
       lat: document.getElementById("lat").value.trim(),
       lon: document.getElementById("lon").value.trim(),
       contacts: gatherContacts(),
