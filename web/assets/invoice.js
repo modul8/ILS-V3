@@ -22,11 +22,40 @@
   const msg = document.getElementById("invMsg");
   const summary = document.getElementById("invSummary");
   const list = document.getElementById("invList");
+  const storageKey = "ils_v3_invoice_settings_v1";
 
   let currentRows = [];
-  if (baseUrlInput) baseUrlInput.value = cfg.dolibarr_base_url || "";
+  function loadSavedSettings() {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === "object") ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        base_url: String(baseUrlInput?.value || "").trim(),
+        api_key: String(apiKeyInput?.value || "").trim(),
+        socid: String(socidInput?.value || "").trim(),
+        line_rate: String(lineRateInput?.value || "0"),
+        tva_tx: String(tvaTxInput?.value || "0"),
+      }));
+    } catch (_) {
+      // ignore storage failures
+    }
+  }
+
+  const saved = loadSavedSettings();
+  if (baseUrlInput) baseUrlInput.value = saved.base_url || cfg.dolibarr_base_url || "";
   const defaultSocid = String(cfg.dolibarr_socid || "").trim();
-  if (tvaTxInput) tvaTxInput.value = cfg.dolibarr_tva_tx || "0";
+  if (apiKeyInput) apiKeyInput.value = saved.api_key || "";
+  if (lineRateInput) lineRateInput.value = saved.line_rate || "0";
+  if (tvaTxInput) tvaTxInput.value = saved.tva_tx || cfg.dolibarr_tva_tx || "0";
 
   function esc(v) {
     return String(v || "")
@@ -159,6 +188,7 @@
   }
 
   function dolibarrPayload() {
+    saveSettings();
     return {
       base_url: String(baseUrlInput?.value || "").trim(),
       api_key: String(apiKeyInput?.value || "").trim(),
@@ -174,11 +204,13 @@
     const opts = ['<option value="">Select customer...</option>']
       .concat(rows.map((c) => `<option value="${Number(c.id) || 0}">${esc(c.label || ("Customer " + c.id))}</option>`));
     socidInput.innerHTML = opts.join("");
-    if (defaultSocid && rows.some((c) => String(c.id) === defaultSocid)) {
-      socidInput.value = defaultSocid;
+    const preferredSocid = String(saved.socid || defaultSocid || "").trim();
+    if (preferredSocid && rows.some((c) => String(c.id) === preferredSocid)) {
+      socidInput.value = preferredSocid;
     } else if (rows.length === 1) {
       socidInput.value = String(rows[0].id);
     }
+    saveSettings();
   }
 
   async function loadCustomers() {
@@ -274,5 +306,8 @@
   exportBtn.addEventListener("click", exportCsv);
   if (testConnBtn) testConnBtn.addEventListener("click", testConnection);
   if (createDraftsBtn) createDraftsBtn.addEventListener("click", createDrafts);
+  [baseUrlInput, apiKeyInput, socidInput, lineRateInput, tvaTxInput].forEach((el) => {
+    if (el) el.addEventListener("change", saveSettings);
+  });
   loadQueue();
 })();
