@@ -36,7 +36,7 @@
   function mapLink(lat, lon) {
     if (lat === null || lat === "" || lon === null || lon === "") return "";
     const q = encodeURIComponent(`${lat},${lon}`);
-    return `<a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}">Open map pin</a>`;
+    return `<a class="pin-link" title="Open map pin" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}"><img src="assets/gps.png" alt="Map pin"></a>`;
   }
 
   function trackLink(type, id, hasTrack, directUrl) {

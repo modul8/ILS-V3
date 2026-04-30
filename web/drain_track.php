@@ -50,7 +50,7 @@ if ($asset_type !== "drain" || $asset_id === "") {
       <div class="line">
         <h1>Drain <?php echo htmlspecialchars($asset_id, ENT_QUOTES, "UTF-8"); ?> Track</h1>
         <div class="line">
-          <a id="openPinLink" class="btn btn-secondary" target="_blank" rel="noopener" style="display:none;">Open map pin</a>
+          <a id="openPinLink" class="pin-link" title="Open map pin" target="_blank" rel="noopener" style="display:none;"><img src="assets/gps.png" alt="Map pin"></a>
           <a id="downloadGeoJsonLink" class="btn btn-secondary" target="_blank" rel="noopener">Download GeoJSON</a>
         </div>
       </div>
