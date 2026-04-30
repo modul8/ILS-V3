@@ -14,6 +14,7 @@
   const selectAllBtn = document.getElementById("jobsSelectAllBtn");
   const clearSelBtn = document.getElementById("jobsClearSelectionBtn");
   const addCurrentBtn = document.getElementById("jobsAddCurrentBtn");
+  const toggleCompletedBtn = document.getElementById("jobsToggleCompletedBtn");
   const removeCurrentBtn = document.getElementById("jobsRemoveCurrentBtn");
   const markCompletedBtn = document.getElementById("jobsMarkCompletedBtn");
   const markInvoicedBtn = document.getElementById("jobsMarkInvoicedBtn");
@@ -101,6 +102,13 @@
       .filter((n) => Number.isFinite(n) && n > 0);
   }
 
+  function selectedJobRows() {
+    return Array.from(document.querySelectorAll(".job-select:checked")).map((el) => ({
+      id: Number(el.value),
+      completed: String(el.dataset.completed || "0") === "1",
+    })).filter((r) => Number.isFinite(r.id) && r.id > 0);
+  }
+
   async function updateFlags(payload, okMsg) {
     const ids = selectedJobIds();
     if (!ids.length) {
@@ -153,7 +161,7 @@
           return `
             <article class="job-card">
               <div class="job-card-head">
-                ${isAdmin ? `<input class="job-select" type="checkbox" value="${Number(j.id) || 0}">` : ""}
+                <input class="job-select" type="checkbox" value="${Number(j.id) || 0}" data-completed="${j.completed_at ? "1" : "0"}">
                 <div class="job-title">${esc(title)}</div>
                 <div class="job-pin">${mapLink(j.lat, j.lon)}</div>
               </div>
@@ -264,6 +272,46 @@
   if (addCurrentBtn) addCurrentBtn.addEventListener("click", () => updateFlags({ in_current_work: 1 }, "Added to current work"));
   if (removeCurrentBtn) removeCurrentBtn.addEventListener("click", () => updateFlags({ in_current_work: 0 }, "Removed from current work"));
   if (markCompletedBtn) markCompletedBtn.addEventListener("click", () => updateFlags({ mark_completed: 1 }, "Marked completed"));
+  if (toggleCompletedBtn) toggleCompletedBtn.addEventListener("click", async () => {
+    const rows = selectedJobRows();
+    if (!rows.length) {
+      if (actionMsg) {
+        actionMsg.className = "error";
+        actionMsg.textContent = "Select one or more jobs first.";
+      }
+      return;
+    }
+    const toComplete = rows.filter((r) => !r.completed).map((r) => r.id);
+    const toClear = rows.filter((r) => r.completed).map((r) => r.id);
+    let updated = 0;
+    if (toComplete.length) {
+      const r1 = await api("update_jobs_flags", "POST", { ids: toComplete, mark_completed: 1 });
+      if (!r1.ok) {
+        if (actionMsg) {
+          actionMsg.className = "error";
+          actionMsg.textContent = r1.error || "Update failed.";
+        }
+        return;
+      }
+      updated += Number(r1.updated || 0);
+    }
+    if (toClear.length) {
+      const r2 = await api("update_jobs_flags", "POST", { ids: toClear, clear_completed: 1 });
+      if (!r2.ok) {
+        if (actionMsg) {
+          actionMsg.className = "error";
+          actionMsg.textContent = r2.error || "Update failed.";
+        }
+        return;
+      }
+      updated += Number(r2.updated || 0);
+    }
+    if (actionMsg) {
+      actionMsg.className = "success";
+      actionMsg.textContent = `Toggled completed (${updated} jobs)`;
+    }
+    await loadJobs();
+  });
   if (markInvoicedBtn) markInvoicedBtn.addEventListener("click", () => updateFlags({ mark_invoiced: 1 }, "Marked invoiced"));
   if (invoiceAsCompletedBtn) invoiceAsCompletedBtn.addEventListener("click", () => updateFlags({ mark_completed: 1, mark_invoiced: 1 }, "Marked completed and invoiced"));
   if (tableWrap) loadJobs();

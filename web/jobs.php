@@ -100,8 +100,13 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
         <button class="btn" id="jobsMarkInvoicedBtn" type="button">Mark Invoiced</button>
         <button class="btn" id="jobsInvoiceAsCompletedBtn" type="button">Invoice as Completed</button>
       </div>
-      <div id="jobsActionMsg"></div>
+      <?php else: ?>
+      <div class="line">
+        <button class="btn" id="jobsAddCurrentBtn" type="button">Add to Current Work</button>
+        <button class="btn" id="jobsToggleCompletedBtn" type="button">Toggle Completed</button>
+      </div>
       <?php endif; ?>
+      <div id="jobsActionMsg"></div>
       <div id="jobsTableWrap" class="list-table-wrap"></div>
     </section>
   </main>

@@ -908,11 +908,7 @@ if ($action === "list_jobs" && $method === "GET") {
 }
 
 if ($action === "update_jobs_flags" && $method === "POST") {
-    if (!auth_is_admin($current_user)) {
-        http_response_code(403);
-        echo json_encode(["ok" => false, "error" => "admin_only"]);
-        exit;
-    }
+    $is_admin = auth_is_admin($current_user);
     $b = body_json();
     $ids = $b["ids"] ?? [];
     if (!is_array($ids) || !$ids) {
@@ -946,6 +942,32 @@ if ($action === "update_jobs_flags" && $method === "POST") {
     }
     if (array_key_exists("clear_completed", $b) && (int)$b["clear_completed"] === 1) {
         $set[] = "completed_at = NULL";
+    }
+
+    if (!$is_admin) {
+        $allowed_non_admin = ["ids", "in_current_work", "mark_completed", "clear_completed"];
+        foreach (array_keys($b) as $k) {
+            if (!in_array((string)$k, $allowed_non_admin, true)) {
+                http_response_code(403);
+                echo json_encode(["ok" => false, "error" => "admin_only"]);
+                exit;
+            }
+        }
+        if (array_key_exists("in_current_work", $b) && (int)$b["in_current_work"] !== 1) {
+            http_response_code(403);
+            echo json_encode(["ok" => false, "error" => "admin_only"]);
+            exit;
+        }
+        if (array_key_exists("mark_completed", $b) && (int)$b["mark_completed"] !== 1) {
+            http_response_code(403);
+            echo json_encode(["ok" => false, "error" => "admin_only"]);
+            exit;
+        }
+        if (array_key_exists("clear_completed", $b) && (int)$b["clear_completed"] !== 1) {
+            http_response_code(403);
+            echo json_encode(["ok" => false, "error" => "admin_only"]);
+            exit;
+        }
     }
     if (!$set) {
         http_response_code(400);
