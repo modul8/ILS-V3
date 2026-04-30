@@ -19,6 +19,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
       <a href="bridges.php">Bridges</a>
       <a href="floodgates.php">Floodgates</a>
       <a class="active" href="jobs.php">Jobs</a>
+      <?php if ($is_admin): ?><a href="jobs_import.php">Job Import</a><?php endif; ?>
       <?php if ($is_admin): ?><a href="mapping_tools.php">Mapping Tools</a><?php endif; ?>
       <a href="index.php">Home</a>
     </nav>
@@ -34,7 +35,7 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
   <main class="wrap">
     <section class="search-panel">
       <h1>Jobs</h1>
-      <p>Import work lists and map jobs to asset coordinates.</p>
+      <p>Manage work jobs and field status.</p>
       <div class="grid">
         <label>Module
           <select id="jobsModule">
@@ -86,34 +87,6 @@ $is_admin = (($current_user["role"] ?? "") === "admin");
         <button class="btn" id="jobsRefreshBtn" type="button">Refresh Jobs</button>
       </div>
     </section>
-
-    <?php if ($is_admin): ?>
-      <section class="card">
-        <h2>Import Work List CSV</h2>
-        <div class="meta">CSV headers: module, asset_type, asset_id, work_order, purchase_order, status, scheduled_date, description, job_key(optional)</div>
-        <div class="line">
-          <input id="jobsCsvFile" type="file" accept=".csv,text/csv">
-          <button class="btn" id="jobsImportBtn" type="button">Import CSV</button>
-        </div>
-        <div id="jobsImportMsg"></div>
-        <hr>
-        <h2>Import XLSX Bundle (V2-style)</h2>
-        <div class="meta">Upload 1 WO/PO file and 1+ drain job files. `Work Orders` column overrides `MI #` when populated.</div>
-        <div class="grid">
-          <label>WO/PO File (updated work list)
-            <input id="jobsWorkFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-          </label>
-          <label>Drain Job Files (one or more)
-            <input id="jobsJobFiles" type="file" multiple accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-          </label>
-        </div>
-        <div class="line">
-          <button class="btn btn-secondary" id="jobsPreviewXlsxBtn" type="button">Dry Run Preview</button>
-          <button class="btn" id="jobsImportXlsxBtn" type="button">Import XLSX Bundle</button>
-        </div>
-        <div id="jobsImportXlsxMsg"></div>
-      </section>
-    <?php endif; ?>
 
     <section class="card">
       <h2>Job List</h2>

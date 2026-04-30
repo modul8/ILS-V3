@@ -149,6 +149,23 @@ textarea { min-height: 84px; resize: vertical; }
 }
 .link:hover { text-decoration: underline; }
 
+.pin-link {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef4ff;
+  border: 1px solid #c8d7f2;
+}
+
+.pin-link img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .contacts {
   display: grid;
   gap: 8px;
@@ -194,6 +211,58 @@ textarea { min-height: 84px; resize: vertical; }
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.jobs-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.job-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.job-card-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.job-title {
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.job-topline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.job-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 6px 12px;
+}
+
+.job-meta-grid .k {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.job-meta-grid .v {
+  display: block;
+  font-size: 14px;
 }
 
 .error, .success {
@@ -318,4 +387,9 @@ textarea { min-height: 84px; resize: vertical; }
 @media (max-width: 700px) {
   .search-row { flex-direction: column; }
   .contact-row { grid-template-columns: 1fr; }
+  .line { flex-wrap: wrap; justify-content: flex-start; }
+  .line .btn { flex: 1 1 180px; }
+  .job-title { font-size: 16px; }
+  .job-topline { font-size: 13px; gap: 6px 12px; }
+  .job-meta-grid { grid-template-columns: 1fr; }
 }

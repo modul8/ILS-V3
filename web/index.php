@@ -41,8 +41,14 @@ require __DIR__ . "/_bootstrap.php";
       </a>
       <a class="tile" href="jobs.php">
         <h2>Jobs</h2>
+        <p>View, filter, and manage current jobs.</p>
+      </a>
+      <?php if (($current_user["role"] ?? "") === "admin"): ?>
+      <a class="tile" href="jobs_import.php">
+        <h2>Job Import</h2>
         <p>Import work lists and link jobs to asset coordinates.</p>
       </a>
+      <?php endif; ?>
       <?php if (($current_user["role"] ?? "") === "admin"): ?>
       <a class="tile" href="mapping_tools.php">
         <h2>Mapping Tools</h2>

@@ -39,13 +39,12 @@
   function mapLink(lat, lon) {
     if (!lat || !lon) return "";
     const q = encodeURIComponent(`${lat},${lon}`);
-    return `<a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}">Map</a>`;
+    return `<a class="pin-link" title="Open map pin" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${q}"><img src="assets/gps.png" alt="Map pin"></a>`;
   }
 
   function assetDisplay(assetType, assetId) {
-    const t = String(assetType || "").trim().toLowerCase();
     let id = String(assetId || "").trim();
-    if (t === "drain") id = id.replace(/^drain\s+/i, "").trim();
+    id = id.replace(/^\s*drain\b[\s:_-]*/i, "").trim();
     return id;
   }
 
@@ -127,6 +126,7 @@
   }
 
   async function loadJobs() {
+    if (!tableWrap) return;
     const params = {
       module: moduleInput.value.trim(),
       status: statusInput.value,
@@ -147,46 +147,33 @@
       return;
     }
     tableWrap.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            ${isAdmin ? "<th></th>" : ""}
-            <th>Module</th>
-            <th>Asset</th>
-            <th>Range</th>
-            <th>Total</th>
-            <th>WO</th>
-            <th>PO</th>
-            <th>Status</th>
-            <th>Pin</th>
-            <th>Current</th>
-            <th>Completed</th>
-            <th>Invoiced</th>
-            <th>Match</th>
-            <th>Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((j) => `
-            <tr>
-              ${isAdmin ? `<td><input class="job-select" type="checkbox" value="${Number(j.id) || 0}"></td>` : ""}
-              <td>${esc(j.module)}</td>
-              <td>${esc(assetDisplay(j.asset_type || "", j.asset_id || ""))}</td>
-              <td>${esc(segmentText(j))}</td>
-              <td>${esc(totalKmText(j))}</td>
-              <td>${esc(j.work_order || "")}</td>
-              <td>${esc(j.purchase_order || "")}</td>
-              <td>${esc(j.status || "")}</td>
-              <td>${mapLink(j.lat, j.lon)}</td>
-              <td>${Number(j.in_current_work) ? "Yes" : "No"}</td>
-              <td>${j.completed_at ? esc(j.completed_at) : ""}</td>
-              <td>${j.invoiced_at ? esc(j.invoiced_at) : ""}</td>
-              <td>${j.asset_ref ? "Matched" : "<span class='error'>Unmatched</span>"}</td>
-              <td>${esc(j.updated_at || "")}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+      <div class="jobs-cards">
+        ${rows.map((j) => {
+          const title = `${assetDisplay(j.asset_type || "", j.asset_id || "")} ${segmentText(j)} ${totalKmText(j)}`.trim();
+          return `
+            <article class="job-card">
+              <div class="job-card-head">
+                ${isAdmin ? `<input class="job-select" type="checkbox" value="${Number(j.id) || 0}">` : ""}
+                <div class="job-title">${esc(title)}</div>
+                <div class="job-pin">${mapLink(j.lat, j.lon)}</div>
+              </div>
+              <div class="job-topline">
+                <span><b>WO:</b> ${esc(j.work_order || "")}</span>
+                <span><b>PO:</b> ${esc(j.purchase_order || "")}</span>
+                <span><b>Status:</b> ${esc(j.status || "")}</span>
+              </div>
+              <div class="job-meta-grid">
+                <div><span class="k">Module</span><span class="v">${esc(j.module || "")}</span></div>
+                <div><span class="k">Current</span><span class="v">${Number(j.in_current_work) ? "Yes" : "No"}</span></div>
+                <div><span class="k">Match</span><span class="v">${j.asset_ref ? "Matched" : "<span class='error'>Unmatched</span>"}</span></div>
+                <div><span class="k">Completed</span><span class="v">${j.completed_at ? esc(j.completed_at) : ""}</span></div>
+                <div><span class="k">Invoiced</span><span class="v">${j.invoiced_at ? esc(j.invoiced_at) : ""}</span></div>
+                <div><span class="k">Updated</span><span class="v">${esc(j.updated_at || "")}</span></div>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
     `;
   }
 
@@ -279,5 +266,5 @@
   if (markCompletedBtn) markCompletedBtn.addEventListener("click", () => updateFlags({ mark_completed: 1 }, "Marked completed"));
   if (markInvoicedBtn) markInvoicedBtn.addEventListener("click", () => updateFlags({ mark_invoiced: 1 }, "Marked invoiced"));
   if (invoiceAsCompletedBtn) invoiceAsCompletedBtn.addEventListener("click", () => updateFlags({ mark_completed: 1, mark_invoiced: 1 }, "Marked completed and invoiced"));
-  loadJobs();
+  if (tableWrap) loadJobs();
 })();
