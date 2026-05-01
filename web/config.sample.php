@@ -14,4 +14,5 @@ return [
     "dolibarr_api_key" => "",
     "dolibarr_socid" => "",
     "dolibarr_tva_tx" => 0.0,
+    "invoice_reports_dir" => "",
 ];

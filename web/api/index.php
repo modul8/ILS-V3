@@ -264,6 +264,101 @@ function invoice_desc_from_job(array $job): string {
     return $first_line;
 }
 
+function invoice_reports_dir(array $cfg): string {
+    $custom = trim((string)($cfg["invoice_reports_dir"] ?? ""));
+    if ($custom !== "") return $custom;
+    return dirname(__DIR__) . DIRECTORY_SEPARATOR . "runtime" . DIRECTORY_SEPARATOR . "invoices";
+}
+
+function invoice_safe_name(string $value): string {
+    $v = preg_replace('/[^A-Za-z0-9._-]+/', '_', $value);
+    $v = trim((string)$v, "._-");
+    return $v !== "" ? $v : "invoice";
+}
+
+function invoice_line_total(float $qty, float $subprice): float {
+    return round($qty * $subprice, 2);
+}
+
+function invoice_write_completion_files(array $cfg, int $invoice_id, array $meta, array $lines): array {
+    $dir = invoice_reports_dir($cfg);
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        return ["ok" => false, "error" => "invoice_report_dir_create_failed", "detail" => $dir];
+    }
+
+    $stamp = date("Ymd_His");
+    $po = invoice_safe_name((string)($meta["purchase_order"] ?? ""));
+    $base = "invoice_" . (int)$invoice_id . "_" . $stamp . ($po !== "" ? "_" . $po : "");
+    $txt_path = $dir . DIRECTORY_SEPARATOR . $base . ".txt";
+    $html_path = $dir . DIRECTORY_SEPARATOR . $base . ".html";
+
+    $created_at = date("Y-m-d H:i:s");
+    $socid = (string)($meta["socid"] ?? "");
+    $ref_customer = (string)($meta["ref_customer"] ?? "");
+    $service_date = (string)($meta["service_date"] ?? "");
+    $title = "Invoice #" . (int)$invoice_id;
+
+    $txt = [];
+    $txt[] = $title;
+    $txt[] = "Created: " . $created_at;
+    if ($socid !== "") $txt[] = "SOCID: " . $socid;
+    if ($ref_customer !== "") $txt[] = "Ref/PO: " . $ref_customer;
+    if ($service_date !== "") $txt[] = "Service Date: " . $service_date;
+    $txt[] = "";
+    $txt[] = "Lines:";
+    $grand_total = 0.0;
+    foreach ($lines as $i => $line) {
+        $desc = trim((string)($line["desc"] ?? ""));
+        $qty = (float)($line["qty"] ?? 0);
+        $sub = (float)($line["subprice"] ?? 0);
+        $tva = (float)($line["tva_tx"] ?? 0);
+        $line_total = invoice_line_total($qty, $sub);
+        $grand_total += $line_total;
+        $txt[] = ($i + 1) . ". " . $desc;
+        $txt[] = "   Qty: " . number_format($qty, 2, ".", "") . " | Rate: " . number_format($sub, 2, ".", "") . " | GST%: " . number_format($tva, 2, ".", "") . " | Total(excl): " . number_format($line_total, 2, ".", "");
+    }
+    $txt[] = "";
+    $txt[] = "Total (excl GST): " . number_format($grand_total, 2, ".", "");
+
+    $rows_html = "";
+    foreach ($lines as $line) {
+        $desc = nl2br(htmlspecialchars(trim((string)($line["desc"] ?? "")), ENT_QUOTES, "UTF-8"));
+        $qty = (float)($line["qty"] ?? 0);
+        $sub = (float)($line["subprice"] ?? 0);
+        $tva = (float)($line["tva_tx"] ?? 0);
+        $line_total = invoice_line_total($qty, $sub);
+        $rows_html .= "<tr>"
+            . "<td style=\"padding:6px;border:1px solid #ccc;\">" . $desc . "</td>"
+            . "<td style=\"padding:6px;border:1px solid #ccc;text-align:right;\">" . number_format($qty, 2, ".", "") . "</td>"
+            . "<td style=\"padding:6px;border:1px solid #ccc;text-align:right;\">" . number_format($sub, 2, ".", "") . "</td>"
+            . "<td style=\"padding:6px;border:1px solid #ccc;text-align:right;\">" . number_format($tva, 2, ".", "") . "</td>"
+            . "<td style=\"padding:6px;border:1px solid #ccc;text-align:right;\">" . number_format($line_total, 2, ".", "") . "</td>"
+            . "</tr>";
+    }
+    $html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>" . htmlspecialchars($title, ENT_QUOTES, "UTF-8") . "</title></head><body>"
+        . "<h1>" . htmlspecialchars($title, ENT_QUOTES, "UTF-8") . "</h1>"
+        . "<p><b>Created:</b> " . htmlspecialchars($created_at, ENT_QUOTES, "UTF-8") . "</p>"
+        . ($socid !== "" ? "<p><b>SOCID:</b> " . htmlspecialchars($socid, ENT_QUOTES, "UTF-8") . "</p>" : "")
+        . ($ref_customer !== "" ? "<p><b>Ref/PO:</b> " . htmlspecialchars($ref_customer, ENT_QUOTES, "UTF-8") . "</p>" : "")
+        . ($service_date !== "" ? "<p><b>Service Date:</b> " . htmlspecialchars($service_date, ENT_QUOTES, "UTF-8") . "</p>" : "")
+        . "<table style=\"border-collapse:collapse;width:100%;\">"
+        . "<thead><tr>"
+        . "<th style=\"padding:6px;border:1px solid #ccc;text-align:left;\">Description</th>"
+        . "<th style=\"padding:6px;border:1px solid #ccc;text-align:right;\">Qty</th>"
+        . "<th style=\"padding:6px;border:1px solid #ccc;text-align:right;\">Rate</th>"
+        . "<th style=\"padding:6px;border:1px solid #ccc;text-align:right;\">GST%</th>"
+        . "<th style=\"padding:6px;border:1px solid #ccc;text-align:right;\">Total (excl)</th>"
+        . "</tr></thead><tbody>" . $rows_html . "</tbody></table></body></html>";
+
+    if (@file_put_contents($txt_path, implode("\n", $txt) . "\n") === false) {
+        return ["ok" => false, "error" => "invoice_report_txt_write_failed", "detail" => $txt_path];
+    }
+    if (@file_put_contents($html_path, $html) === false) {
+        return ["ok" => false, "error" => "invoice_report_html_write_failed", "detail" => $html_path];
+    }
+    return ["ok" => true, "txt_path" => $txt_path, "html_path" => $html_path];
+}
+
 function mapping_enabled(array $cfg): bool {
     return (bool)($cfg["mapping_enabled"] ?? false);
 }
@@ -1318,6 +1413,8 @@ if ($action === "invoice_create_drafts" && $method === "POST") {
     $api_root = invoice_api_root($base_url);
     $created = [];
     $marked_ids = [];
+    $report_files = [];
+    $report_warnings = [];
     foreach ($groups as $po => $grows) {
         $create_payload = [
             "socid" => $socid,
@@ -1345,6 +1442,7 @@ if ($action === "invoice_create_drafts" && $method === "POST") {
             exit;
         }
 
+        $created_lines = [];
         foreach ($grows as $jr) {
             $qty = invoice_qty_from_job($jr);
             $desc = invoice_desc_from_job($jr);
@@ -1370,8 +1468,33 @@ if ($action === "invoice_create_drafts" && $method === "POST") {
                 ]);
                 exit;
             }
+            $created_lines[] = [
+                "desc" => $desc,
+                "qty" => (float)number_format($qty, 2, ".", ""),
+                "subprice" => (float)number_format($line_rate, 2, ".", ""),
+                "tva_tx" => (float)number_format($tva_tx, 2, ".", ""),
+            ];
             $marked_ids[] = (int)$jr["id"];
             usleep(250000);
+        }
+
+        $wr = invoice_write_completion_files($cfg, (int)$invoice_id, [
+            "socid" => $socid,
+            "ref_customer" => ($po === "(no PO)") ? "" : $po,
+            "purchase_order" => ($po === "(no PO)") ? "" : $po,
+        ], $created_lines);
+        if ($wr["ok"]) {
+            $report_files[] = [
+                "invoice_id" => (int)$invoice_id,
+                "txt_path" => $wr["txt_path"],
+                "html_path" => $wr["html_path"],
+            ];
+        } else {
+            $report_warnings[] = [
+                "invoice_id" => (int)$invoice_id,
+                "error" => $wr["error"] ?? "invoice_report_write_failed",
+                "detail" => $wr["detail"] ?? "",
+            ];
         }
 
         $created[] = [
@@ -1398,6 +1521,8 @@ if ($action === "invoice_create_drafts" && $method === "POST") {
         "ok" => true,
         "created" => $created,
         "updated_jobs" => count($marked_ids),
+        "report_files" => $report_files,
+        "report_warnings" => $report_warnings,
     ]);
     exit;
 }
@@ -1521,10 +1646,26 @@ if ($action === "invoice_create_manual_draft" && $method === "POST") {
         usleep(200000);
     }
 
+    $report = invoice_write_completion_files($cfg, (int)$invoice_id, [
+        "socid" => $socid,
+        "ref_customer" => $ref_customer,
+        "purchase_order" => $ref_customer,
+        "service_date" => $service_date,
+    ], array_map(function ($line) use ($tva_tx) {
+        return [
+            "desc" => (string)$line["desc"],
+            "qty" => (float)$line["qty"],
+            "subprice" => (float)$line["subprice"],
+            "tva_tx" => (float)$tva_tx,
+        ];
+    }, $line_defs));
+
     echo json_encode([
         "ok" => true,
         "invoice_id" => (int)$invoice_id,
         "line_count" => count($line_defs),
+        "report_file" => $report["ok"] ? ["txt_path" => $report["txt_path"], "html_path" => $report["html_path"]] : null,
+        "report_warning" => $report["ok"] ? null : ["error" => $report["error"] ?? "invoice_report_write_failed", "detail" => $report["detail"] ?? ""],
     ]);
     exit;
 }
