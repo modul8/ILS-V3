@@ -1181,6 +1181,65 @@ if ($action === "invoice_list_customers" && $method === "POST") {
     exit;
 }
 
+if ($action === "invoice_manual_options" && $method === "GET") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    $limit = (int)($_GET["limit"] ?? 5000);
+    if ($limit <= 0 || $limit > 10000) $limit = 5000;
+
+    $stmt = $pdo->prepare(
+        "SELECT module, description, purchase_order, work_order, updated_at
+         FROM jobs
+         WHERE description IS NOT NULL AND TRIM(description) <> ''
+         ORDER BY updated_at DESC
+         LIMIT " . (int)$limit
+    );
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $options = [];
+    $seen = [];
+    foreach ($rows as $r) {
+        $work_type = trim((string)($r["module"] ?? ""));
+        $desc = trim((string)($r["description"] ?? ""));
+        if ($work_type === "" || $desc === "") continue;
+        $main_text = $desc;
+        if (strpos($main_text, " / ") !== false) {
+            $parts = preg_split('/\s*\/\s*/', $main_text);
+            if (is_array($parts) && isset($parts[0])) {
+                $main_text = trim((string)$parts[0]);
+            }
+        }
+        $main_text = preg_replace('/\s+/', ' ', $main_text ?? "");
+        $main_text = trim((string)$main_text);
+        if ($main_text === "") continue;
+
+        $k = strtolower($work_type) . "||" . strtolower($main_text);
+        if (isset($seen[$k])) continue;
+        $seen[$k] = true;
+
+        $options[] = [
+            "work_type" => $work_type,
+            "main_text" => $main_text,
+            "purchase_order" => trim((string)($r["purchase_order"] ?? "")),
+            "work_order" => trim((string)($r["work_order"] ?? "")),
+        ];
+    }
+
+    usort($options, function ($a, $b) {
+        $wa = strtolower((string)($a["work_type"] ?? ""));
+        $wb = strtolower((string)($b["work_type"] ?? ""));
+        $cmp = strcmp($wa, $wb);
+        if ($cmp !== 0) return $cmp;
+        return strcmp(strtolower((string)($a["main_text"] ?? "")), strtolower((string)($b["main_text"] ?? "")));
+    });
+    echo json_encode(["ok" => true, "options" => $options]);
+    exit;
+}
+
 if ($action === "invoice_create_drafts" && $method === "POST") {
     if (!auth_is_admin($current_user)) {
         http_response_code(403);

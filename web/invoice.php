@@ -66,6 +66,18 @@ if (!$is_admin) {
       <h2>Manual Draft Invoice</h2>
       <p>Create one draft invoice with custom lines (for example noxious weed spraying).</p>
       <div class="grid">
+        <label>Work Type
+          <select id="invManualWorkType">
+            <option value="">Select work type...</option>
+          </select>
+        </label>
+        <label>Main Text Item
+          <select id="invManualMainText">
+            <option value="">Select main text...</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid">
         <label>Customer PO / Ref (optional)
           <input id="invManualPo" placeholder="e.g. 261330">
         </label>

@@ -11,6 +11,8 @@
   const socidInput = document.getElementById("invSocid");
   const lineRateInput = document.getElementById("invLineRate");
   const tvaTxInput = document.getElementById("invTvaTx");
+  const manualWorkTypeInput = document.getElementById("invManualWorkType");
+  const manualMainTextInput = document.getElementById("invManualMainText");
   const manualPoInput = document.getElementById("invManualPo");
   const manualWoInput = document.getElementById("invManualWo");
   const manualDateInput = document.getElementById("invManualDate");
@@ -34,6 +36,7 @@
   const storageKey = "ils_v3_invoice_settings_v1";
 
   let currentRows = [];
+  let manualOptions = [];
   function loadSavedSettings() {
     try {
       const raw = localStorage.getItem(storageKey);
@@ -55,6 +58,8 @@
         tva_tx: String(tvaTxInput?.value || "0"),
         manual_po: String(manualPoInput?.value || "").trim(),
         manual_wo: String(manualWoInput?.value || "").trim(),
+        manual_work_type: String(manualWorkTypeInput?.value || "").trim(),
+        manual_main_text: String(manualMainTextInput?.value || "").trim(),
         manual_desc: String(manualDescInput?.value || "").trim(),
         manual_hours_qty: String(manualHoursQtyInput?.value || "0"),
         manual_hours_rate: String(manualHoursRateInput?.value || "0"),
@@ -74,6 +79,8 @@
   if (tvaTxInput) tvaTxInput.value = saved.tva_tx || cfg.dolibarr_tva_tx || "0";
   if (manualPoInput) manualPoInput.value = saved.manual_po || "";
   if (manualWoInput) manualWoInput.value = saved.manual_wo || "";
+  if (manualWorkTypeInput) manualWorkTypeInput.value = saved.manual_work_type || "";
+  if (manualMainTextInput) manualMainTextInput.value = saved.manual_main_text || "";
   if (manualDescInput) manualDescInput.value = saved.manual_desc || "";
   if (manualHoursQtyInput) manualHoursQtyInput.value = saved.manual_hours_qty || "0";
   if (manualHoursRateInput) manualHoursRateInput.value = saved.manual_hours_rate || "0";
@@ -246,6 +253,53 @@
     return r;
   }
 
+  function setManualMainTextOptions(workType) {
+    if (!manualMainTextInput) return;
+    const rows = manualOptions.filter((r) => String(r.work_type || "") === String(workType || ""));
+    const opts = ['<option value="">Select main text...</option>']
+      .concat(rows.map((r) => `<option value="${esc(r.main_text || "")}">${esc(r.main_text || "")}</option>`));
+    manualMainTextInput.innerHTML = opts.join("");
+  }
+
+  function applyManualSelection(workType, mainText) {
+    const row = manualOptions.find((r) => String(r.work_type || "") === String(workType || "") && String(r.main_text || "") === String(mainText || ""));
+    if (!row) return;
+    if (manualDescInput) manualDescInput.value = String(row.main_text || "");
+    if (manualPoInput) manualPoInput.value = String(row.purchase_order || "");
+    if (manualWoInput) manualWoInput.value = String(row.work_order || "");
+    saveSettings();
+  }
+
+  function setManualWorkTypes(options) {
+    manualOptions = Array.isArray(options) ? options : [];
+    if (!manualWorkTypeInput) return;
+    const types = Array.from(new Set(manualOptions.map((r) => String(r.work_type || "")).filter((v) => v)));
+    const opts = ['<option value="">Select work type...</option>']
+      .concat(types.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`));
+    manualWorkTypeInput.innerHTML = opts.join("");
+
+    const preferredType = String(saved.manual_work_type || "").trim();
+    if (preferredType && types.includes(preferredType)) {
+      manualWorkTypeInput.value = preferredType;
+    } else if (types.length === 1) {
+      manualWorkTypeInput.value = types[0];
+    }
+    setManualMainTextOptions(manualWorkTypeInput.value || "");
+
+    const preferredMain = String(saved.manual_main_text || "").trim();
+    const validMain = manualOptions.some((r) => String(r.work_type || "") === String(manualWorkTypeInput.value || "") && String(r.main_text || "") === preferredMain);
+    if (validMain) {
+      manualMainTextInput.value = preferredMain;
+      applyManualSelection(manualWorkTypeInput.value || "", preferredMain);
+    }
+  }
+
+  async function loadManualOptions() {
+    const r = await api("invoice_manual_options", "GET");
+    if (!r.ok) return;
+    setManualWorkTypes(r.options || []);
+  }
+
   async function testConnection() {
     const payload = dolibarrPayload();
     if (!payload.base_url || !payload.api_key) {
@@ -374,8 +428,17 @@
   if (testConnBtn) testConnBtn.addEventListener("click", testConnection);
   if (createDraftsBtn) createDraftsBtn.addEventListener("click", createDrafts);
   if (createManualBtn) createManualBtn.addEventListener("click", createManualDraft);
+  if (manualWorkTypeInput) manualWorkTypeInput.addEventListener("change", () => {
+    setManualMainTextOptions(manualWorkTypeInput.value || "");
+    if (manualMainTextInput) manualMainTextInput.value = "";
+    saveSettings();
+  });
+  if (manualMainTextInput) manualMainTextInput.addEventListener("change", () => {
+    applyManualSelection(manualWorkTypeInput?.value || "", manualMainTextInput.value || "");
+  });
   [baseUrlInput, apiKeyInput, socidInput, lineRateInput, tvaTxInput, manualPoInput, manualWoInput, manualDescInput, manualHoursQtyInput, manualHoursRateInput, manualChemQtyInput, manualChemRateInput].forEach((el) => {
     if (el) el.addEventListener("change", saveSettings);
   });
+  loadManualOptions();
   loadQueue();
 })();
