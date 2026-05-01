@@ -11,6 +11,15 @@
   const socidInput = document.getElementById("invSocid");
   const lineRateInput = document.getElementById("invLineRate");
   const tvaTxInput = document.getElementById("invTvaTx");
+  const manualPoInput = document.getElementById("invManualPo");
+  const manualWoInput = document.getElementById("invManualWo");
+  const manualDateInput = document.getElementById("invManualDate");
+  const manualDescInput = document.getElementById("invManualDesc");
+  const manualHoursQtyInput = document.getElementById("invManualHoursQty");
+  const manualHoursRateInput = document.getElementById("invManualHoursRate");
+  const manualChemQtyInput = document.getElementById("invManualChemQty");
+  const manualChemRateInput = document.getElementById("invManualChemRate");
+  const createManualBtn = document.getElementById("invCreateManualBtn");
   const testConnBtn = document.getElementById("invTestConnBtn");
   const createDraftsBtn = document.getElementById("invCreateDraftsBtn");
   const refreshBtn = document.getElementById("invRefreshBtn");
@@ -44,6 +53,13 @@
         socid: String(socidInput?.value || "").trim(),
         line_rate: String(lineRateInput?.value || "0"),
         tva_tx: String(tvaTxInput?.value || "0"),
+        manual_po: String(manualPoInput?.value || "").trim(),
+        manual_wo: String(manualWoInput?.value || "").trim(),
+        manual_desc: String(manualDescInput?.value || "").trim(),
+        manual_hours_qty: String(manualHoursQtyInput?.value || "0"),
+        manual_hours_rate: String(manualHoursRateInput?.value || "0"),
+        manual_chem_qty: String(manualChemQtyInput?.value || "0"),
+        manual_chem_rate: String(manualChemRateInput?.value || "0"),
       }));
     } catch (_) {
       // ignore storage failures
@@ -56,6 +72,13 @@
   if (apiKeyInput) apiKeyInput.value = saved.api_key || "";
   if (lineRateInput) lineRateInput.value = saved.line_rate || "0";
   if (tvaTxInput) tvaTxInput.value = saved.tva_tx || cfg.dolibarr_tva_tx || "0";
+  if (manualPoInput) manualPoInput.value = saved.manual_po || "";
+  if (manualWoInput) manualWoInput.value = saved.manual_wo || "";
+  if (manualDescInput) manualDescInput.value = saved.manual_desc || "";
+  if (manualHoursQtyInput) manualHoursQtyInput.value = saved.manual_hours_qty || "0";
+  if (manualHoursRateInput) manualHoursRateInput.value = saved.manual_hours_rate || "0";
+  if (manualChemQtyInput) manualChemQtyInput.value = saved.manual_chem_qty || "0";
+  if (manualChemRateInput) manualChemRateInput.value = saved.manual_chem_rate || "0";
 
   function esc(v) {
     return String(v || "")
@@ -276,6 +299,50 @@
     await loadQueue();
   }
 
+  async function createManualDraft() {
+    const payload = {
+      ...dolibarrPayload(),
+      ref_customer: String(manualPoInput?.value || "").trim(),
+      work_order: String(manualWoInput?.value || "").trim(),
+      service_date: String(manualDateInput?.value || "").trim(),
+      service_desc: String(manualDescInput?.value || "").trim(),
+      hours_qty: Number(manualHoursQtyInput?.value || 0),
+      hours_rate: Number(manualHoursRateInput?.value || 0),
+      chem_qty: Number(manualChemQtyInput?.value || 0),
+      chem_rate: Number(manualChemRateInput?.value || 0),
+    };
+    if (!payload.base_url || !payload.api_key || !payload.socid) {
+      msg.className = "error";
+      msg.textContent = "Enter Dolibarr base URL, API key, and SOCID first.";
+      return;
+    }
+    if (!payload.service_desc) {
+      msg.className = "error";
+      msg.textContent = "Enter a service description for the manual invoice.";
+      return;
+    }
+    if (payload.hours_qty <= 0 || payload.hours_rate <= 0) {
+      msg.className = "error";
+      msg.textContent = "Enter hours and hourly rate greater than zero.";
+      return;
+    }
+    if (payload.chem_qty > 0 && payload.chem_rate <= 0) {
+      msg.className = "error";
+      msg.textContent = "Enter rates for any non-zero hours or chemical quantities.";
+      return;
+    }
+    msg.className = "";
+    msg.textContent = "Creating manual draft invoice in Dolibarr...";
+    const r = await api("invoice_create_manual_draft", "POST", payload);
+    if (!r.ok) {
+      msg.className = "error";
+      msg.textContent = `${r.error || "Manual draft invoice creation failed"}${r.detail ? `: ${r.detail}` : ""}`;
+      return;
+    }
+    msg.className = "success";
+    msg.textContent = `Created manual draft invoice #${r.invoice_id || ""}.`;
+  }
+
   function exportCsv() {
     if (!currentRows.length) {
       msg.className = "error";
@@ -306,7 +373,8 @@
   exportBtn.addEventListener("click", exportCsv);
   if (testConnBtn) testConnBtn.addEventListener("click", testConnection);
   if (createDraftsBtn) createDraftsBtn.addEventListener("click", createDrafts);
-  [baseUrlInput, apiKeyInput, socidInput, lineRateInput, tvaTxInput].forEach((el) => {
+  if (createManualBtn) createManualBtn.addEventListener("click", createManualDraft);
+  [baseUrlInput, apiKeyInput, socidInput, lineRateInput, tvaTxInput, manualPoInput, manualWoInput, manualDescInput, manualHoursQtyInput, manualHoursRateInput, manualChemQtyInput, manualChemRateInput].forEach((el) => {
     if (el) el.addEventListener("change", saveSettings);
   });
   loadQueue();

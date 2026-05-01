@@ -63,6 +63,41 @@ if (!$is_admin) {
         <button class="btn btn-secondary" id="invTestConnBtn" type="button">Test Dolibarr Connection</button>
         <button class="btn" id="invCreateDraftsBtn" type="button">Create Draft Invoices</button>
       </div>
+      <h2>Manual Draft Invoice</h2>
+      <p>Create one draft invoice with custom lines (for example noxious weed spraying).</p>
+      <div class="grid">
+        <label>Customer PO / Ref (optional)
+          <input id="invManualPo" placeholder="e.g. 261330">
+        </label>
+        <label>Work Order (optional)
+          <input id="invManualWo" placeholder="e.g. 261324">
+        </label>
+        <label>Service Date (optional)
+          <input id="invManualDate" type="date">
+        </label>
+      </div>
+      <div class="grid">
+        <label>Service Description
+          <input id="invManualDesc" placeholder="e.g. 52W SPRAY NOX WEEDS CATCHMENT VICTORY SU - WATERLOO PARADISE">
+        </label>
+      </div>
+      <div class="grid">
+        <label>Hours
+          <input id="invManualHoursQty" type="number" step="0.01" min="0" value="0">
+        </label>
+        <label>Hourly Rate
+          <input id="invManualHoursRate" type="number" step="0.01" min="0" value="0">
+        </label>
+        <label>Chemical Litres
+          <input id="invManualChemQty" type="number" step="0.01" min="0" value="0">
+        </label>
+        <label>Chemical Rate / L
+          <input id="invManualChemRate" type="number" step="0.01" min="0" value="0">
+        </label>
+      </div>
+      <div class="line">
+        <button class="btn" id="invCreateManualBtn" type="button">Create Manual Draft Invoice</button>
+      </div>
       <div class="grid">
         <label>Module
           <select id="invModule">

@@ -1343,6 +1343,133 @@ if ($action === "invoice_create_drafts" && $method === "POST") {
     exit;
 }
 
+if ($action === "invoice_create_manual_draft" && $method === "POST") {
+    if (!auth_is_admin($current_user)) {
+        http_response_code(403);
+        echo json_encode(["ok" => false, "error" => "admin_only"]);
+        exit;
+    }
+    $b = body_json();
+    $ic = invoice_cfg($cfg);
+    $base_url = trim((string)($b["base_url"] ?? $ic["base_url"]));
+    $api_key = trim((string)($b["api_key"] ?? $ic["api_key"]));
+    $socid = trim((string)($b["socid"] ?? $ic["socid"]));
+    $tva_tx = isset($b["tva_tx"]) ? (float)$b["tva_tx"] : (float)$ic["tva_tx"];
+    $service_desc = trim((string)($b["service_desc"] ?? ""));
+    $work_order = trim((string)($b["work_order"] ?? ""));
+    $service_date = trim((string)($b["service_date"] ?? ""));
+    $ref_customer = trim((string)($b["ref_customer"] ?? ""));
+    $hours_qty = isset($b["hours_qty"]) ? (float)$b["hours_qty"] : 0.0;
+    $hours_rate = isset($b["hours_rate"]) ? (float)$b["hours_rate"] : 0.0;
+    $chem_qty = isset($b["chem_qty"]) ? (float)$b["chem_qty"] : 0.0;
+    $chem_rate = isset($b["chem_rate"]) ? (float)$b["chem_rate"] : 0.0;
+
+    if ($base_url === "" || $api_key === "" || $socid === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_dolibarr_config"]);
+        exit;
+    }
+    if ($service_desc === "") {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_service_desc"]);
+        exit;
+    }
+    if ($hours_qty < 0 || $hours_rate < 0 || $chem_qty < 0 || $chem_rate < 0) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "negative_values_not_allowed"]);
+        exit;
+    }
+    if ($hours_qty <= 0 || $hours_rate <= 0) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "hours_and_rate_required"]);
+        exit;
+    }
+    if ($chem_qty > 0 && $chem_rate <= 0) {
+        http_response_code(400);
+        echo json_encode(["ok" => false, "error" => "missing_rate_for_nonzero_qty"]);
+        exit;
+    }
+
+    $api_root = invoice_api_root($base_url);
+    $note_public = "ILS V3 manual draft invoice";
+    if ($service_date !== "") {
+        $note_public .= " (" . $service_date . ")";
+    }
+    $create_payload = [
+        "socid" => $socid,
+        "type" => "0",
+        "note_public" => $note_public,
+        "ref_customer" => $ref_customer,
+    ];
+    $create_url = $api_root . "/invoices";
+    $cr = invoice_dolibarr_request("POST", $create_url, $api_key, $create_payload, 30);
+    if (!$cr["ok"]) {
+        http_response_code(502);
+        echo json_encode([
+            "ok" => false,
+            "error" => "dolibarr_create_invoice_failed",
+            "status" => $cr["status"],
+            "detail" => substr($cr["body"] ?: $cr["error"], 0, 500),
+        ]);
+        exit;
+    }
+    $invoice_id = invoice_parse_id($cr["body"]);
+    if (!$invoice_id) {
+        http_response_code(502);
+        echo json_encode(["ok" => false, "error" => "dolibarr_parse_invoice_id_failed", "detail" => substr($cr["body"], 0, 500)]);
+        exit;
+    }
+
+    $main_desc = $service_desc;
+    if ($work_order !== "") {
+        $main_desc .= "\nW/O " . $work_order;
+    }
+    $line_defs = [];
+    $line_defs[] = [
+        "desc" => $main_desc,
+        "qty" => $hours_qty,
+        "subprice" => $hours_rate,
+    ];
+    if ($chem_qty > 0) {
+        $line_defs[] = [
+            "desc" => "Chemicals /L",
+            "qty" => $chem_qty,
+            "subprice" => $chem_rate,
+        ];
+    }
+
+    foreach ($line_defs as $line) {
+        $line_payload = [
+            "desc" => (string)$line["desc"],
+            "qty" => number_format((float)$line["qty"], 2, ".", ""),
+            "subprice" => number_format((float)$line["subprice"], 2, ".", ""),
+            "tva_tx" => number_format($tva_tx, 2, ".", ""),
+            "product_type" => "1",
+        ];
+        $line_url = $api_root . "/invoices/" . (int)$invoice_id . "/lines";
+        $lr = invoice_dolibarr_request("POST", $line_url, $api_key, $line_payload, 30);
+        if (!$lr["ok"]) {
+            http_response_code(502);
+            echo json_encode([
+                "ok" => false,
+                "error" => "dolibarr_add_line_failed",
+                "status" => $lr["status"],
+                "detail" => substr($lr["body"] ?: $lr["error"], 0, 500),
+                "invoice_id" => $invoice_id,
+            ]);
+            exit;
+        }
+        usleep(200000);
+    }
+
+    echo json_encode([
+        "ok" => true,
+        "invoice_id" => (int)$invoice_id,
+        "line_count" => count($line_defs),
+    ]);
+    exit;
+}
+
 if ($action === "import_jobs_csv" && $method === "POST") {
     if (!auth_is_admin($current_user)) {
         http_response_code(403);
