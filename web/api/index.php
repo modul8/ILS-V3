@@ -241,6 +241,29 @@ function invoice_qty_from_job(array $job): float {
     return 1.0;
 }
 
+function invoice_desc_from_job(array $job): string {
+    $desc_raw = trim((string)($job["description"] ?? ""));
+    $work_order = trim((string)($job["work_order"] ?? ""));
+    $asset_type = trim((string)($job["asset_type"] ?? ""));
+    $asset_id = trim((string)($job["asset_id"] ?? ""));
+
+    $first_line = $desc_raw;
+    if ($first_line !== "" && strpos($first_line, " / ") !== false) {
+        $parts = preg_split('/\s*\/\s*/', $first_line);
+        if (is_array($parts) && !empty($parts[0])) {
+            $first_line = trim((string)$parts[0]);
+        }
+    }
+    if ($first_line === "") {
+        $first_line = trim($asset_type . " " . $asset_id);
+    }
+
+    if ($work_order !== "") {
+        return $first_line . "\nW/O: " . $work_order;
+    }
+    return $first_line;
+}
+
 function mapping_enabled(array $cfg): bool {
     return (bool)($cfg["mapping_enabled"] ?? false);
 }
@@ -1265,9 +1288,7 @@ if ($action === "invoice_create_drafts" && $method === "POST") {
 
         foreach ($grows as $jr) {
             $qty = invoice_qty_from_job($jr);
-            $desc = trim((string)($jr["asset_type"] ?? "") . " " . (string)($jr["asset_id"] ?? ""));
-            $seg = trim((string)($jr["description"] ?? ""));
-            if ($seg !== "") $desc .= " - " . $seg;
+            $desc = invoice_desc_from_job($jr);
             $line_payload = [
                 "desc" => $desc,
                 "qty" => number_format($qty, 2, ".", ""),
